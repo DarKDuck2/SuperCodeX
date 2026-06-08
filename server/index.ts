@@ -15,8 +15,9 @@ const port = Number(process.env.PORT ?? 8787);
 const workspaceRoot = process.cwd();
 const dataDir = path.join(workspaceRoot, ".supercodex");
 const dataFile = path.join(dataDir, "state.json");
-const uploadDir = path.join(dataDir, "uploads");
-const maxAgentTurns = 50;
+const legacyUploadDir = path.join(dataDir, "uploads");
+const conversationsDir = path.join(dataDir, "conversations");
+const maxAgentTurns = 200;
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024, files: 12 }
@@ -80,6 +81,8 @@ type Conversation = {
   shortcut?: string;
   updatedAt: string;
   messages: StoredMessage[];
+  folderName?: string;
+  summary?: string;
 };
 
 type Project = {
@@ -110,8 +113,34 @@ type Automation = {
   id: string;
   title: string;
   schedule: string;
+  prompt: string;
   enabled: boolean;
   createdAt: string;
+  updatedAt?: string;
+  nextRunAt?: string;
+  lastRunAt?: string;
+  lastStatus?: "never" | "running" | "success" | "error";
+  lastResult?: string;
+  lastError?: string;
+  lastDocumentAttachmentId?: string;
+  lastDocumentName?: string;
+  runCount?: number;
+  conversationId?: string;
+  unreadCount?: number;
+  runs?: AutomationRun[];
+};
+
+type AutomationRun = {
+  id: string;
+  trigger: "schedule" | "manual";
+  startedAt: string;
+  finishedAt?: string;
+  status: "running" | "success" | "error";
+  result?: string;
+  error?: string;
+  documentAttachmentId?: string;
+  documentName?: string;
+  unread?: boolean;
 };
 
 type Attachment = {
@@ -123,6 +152,7 @@ type Attachment = {
   size: number;
   path: string;
   kind: "image" | "text" | "file";
+  source?: "upload" | "artifact";
   createdAt: string;
   derivedFrom?: string;
 };
@@ -192,17 +222,28 @@ const systemPrompt = [
   "Help with workplace tasks such as email, documents, research, planning, automation, meetings, operations, and cross-app workflows.",
   "Be practical, concise, and action-oriented.",
   "Use tools only when they are necessary to complete the task.",
+  "Operate fully automatically within the available tools. Do not ask the user to approve routine tool use.",
+  "Never delete files, wipe directories, reset repositories, format disks, escalate privileges, or perform destructive cleanup. If a requested task requires deletion, explain that it was blocked by the automatic safety policy and offer a non-destructive alternative.",
   "When browser or web tools return HTML, DOM, or raw JSON, never echo it verbatim. Extract the useful facts, page title, visible text, links, and next actions instead."
 ].join(" ");
 
-const deniedCommandPatterns = [
-  /\brm\s+-rf\b/,
-  /\bgit\s+reset\s+--hard\b/,
-  /\bgit\s+clean\s+-fd\b/,
-  /\bsudo\b/,
-  />\s*\/dev\/(disk|rdisk)/,
-  /\bmkfs\b/,
-  /\bdd\s+if=/
+const blockedCommandRules: Array<{ pattern: RegExp; reason: string }> = [
+  { pattern: /(^|[;&|]\s*)rm(\s|$)/, reason: "file deletion is disabled" },
+  { pattern: /\bfind\b[\s\S]*\s-delete(\s|$)/, reason: "find -delete is disabled" },
+  { pattern: /\btrash\b|\btrash-put\b|\bgio\s+trash\b/, reason: "moving files to trash is disabled" },
+  { pattern: /\bunlink\b/, reason: "unlink is disabled" },
+  { pattern: /\brmdir\b/, reason: "directory deletion is disabled" },
+  { pattern: /\brimraf\b/, reason: "recursive deletion is disabled" },
+  { pattern: /\bshred\b/, reason: "secure deletion is disabled" },
+  { pattern: /\bgit\s+reset\s+--hard\b/, reason: "destructive git reset is disabled" },
+  { pattern: /\bgit\s+clean\b/, reason: "git clean deletes untracked files and is disabled" },
+  { pattern: /\bgit\s+checkout\s+--\b/, reason: "discarding local changes is disabled" },
+  { pattern: /\bsudo\b|\bsu\s+-?\b|\bdoas\b/, reason: "privilege escalation is disabled" },
+  { pattern: />\s*\/dev\/(disk|rdisk|sda|nvme|mapper)\b/, reason: "writing to block devices is disabled" },
+  { pattern: /\bmkfs(?:\.[\w-]+)?\b|\bdiskutil\s+erase|\bformat\s+[a-z]:/i, reason: "disk formatting is disabled" },
+  { pattern: /\bdd\s+if=/, reason: "raw disk copy commands are disabled" },
+  { pattern: /\bchmod\s+-R\s+777\b|\bchown\s+-R\b/, reason: "broad permission changes are disabled" },
+  { pattern: /\bshutdown\b|\breboot\b|\bhalt\b|\bpoweroff\b/, reason: "system power commands are disabled" }
 ];
 
 const projects = new Map<string, Project>();
@@ -212,6 +253,7 @@ const automations = new Map<string, Automation>();
 const attachments = new Map<string, Attachment>();
 const tools = new Map<string, ToolDefinition>();
 const toolHandlers = new Map<string, (args: Record<string, unknown>, context: ToolContext) => Promise<string>>();
+const runningAutomations = new Set<string>();
 
 type ToolContext = {
   workspacePath: string;
@@ -220,6 +262,7 @@ type ToolContext = {
 
 registerTools();
 await initializeStore();
+startAutomationScheduler();
 
 app.use(cors());
 app.use(express.json({ limit: "4mb" }));
@@ -381,11 +424,23 @@ app.post("/api/conversations/:id/messages", async (req, res) => {
     createdAt: now()
   };
   conversation.messages.push(userMessage);
-  conversation.title = titleFromPrompt(prompt);
+  const isFirstUserMessage = conversation.messages.filter((message) => message.role === "user").length === 1;
+  if (isFirstUserMessage || isGenericConversationTitle(conversation.title)) {
+    conversation.title = await generateConversationTitle(prompt, config);
+    conversation.summary = summarizeConversation(conversation);
+    if (isGenericConversationFolder(conversation.folderName)) {
+      conversation.folderName = conversationFolderName(conversation.title);
+    }
+  }
   conversation.updatedAt = userMessage.createdAt;
   await persistStore();
 
   if (stream) {
+    const streamAbortController = new AbortController();
+    let streamCompleted = false;
+    req.on("close", () => {
+      if (!streamCompleted) streamAbortController.abort();
+    });
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
@@ -393,16 +448,22 @@ app.post("/api/conversations/:id/messages", async (req, res) => {
     });
     writeAgentEvent(res, { type: "step", turn: 0, message: "收到用户请求，开始规划工具使用。" });
     try {
-      await runAgentLoop(conversation, config, (event) => writeAgentEvent(res, event));
-      res.write("data: [DONE]\n\n");
-      res.end();
+      await runAgentLoop(conversation, config, (event) => writeAgentEvent(res, event), streamAbortController.signal);
+      streamCompleted = true;
+      if (!res.destroyed && !res.writableEnded) {
+        res.write("data: [DONE]\n\n");
+        res.end();
+      }
     } catch (error) {
-      writeAgentEvent(res, {
-        type: "error",
-        error: error instanceof Error ? error.message : "Unknown server error"
-      });
-      res.write("data: [DONE]\n\n");
-      res.end();
+      streamCompleted = true;
+      if (!streamAbortController.signal.aborted && !res.destroyed && !res.writableEnded) {
+        writeAgentEvent(res, {
+          type: "error",
+          error: error instanceof Error ? error.message : "Unknown server error"
+        });
+        res.write("data: [DONE]\n\n");
+        res.end();
+      }
     }
     return;
   }
@@ -478,13 +539,33 @@ app.get("/api/webbridge/status", async (_req, res) => {
 });
 
 app.post("/api/automations", async (req, res) => {
-  const { title, schedule } = req.body as { title?: string; schedule?: string };
+  const { title, schedule, prompt, instruction } = req.body as {
+    title?: string;
+    schedule?: string;
+    prompt?: string;
+    instruction?: string;
+  };
+  const parsed = parseAutomationInput({
+    title,
+    schedule,
+    prompt,
+    instruction
+  });
+  const conversation = createAutomationConversation(parsed.title);
   const automation: Automation = {
     id: id("auto"),
-    title: title?.trim() || "新自动化",
-    schedule: schedule?.trim() || "手动触发",
+    title: parsed.title,
+    schedule: parsed.schedule,
+    prompt: parsed.prompt,
     enabled: true,
-    createdAt: now()
+    createdAt: now(),
+    updatedAt: now(),
+    nextRunAt: computeNextRunAt(parsed.schedule),
+    lastStatus: "never",
+    runCount: 0,
+    conversationId: conversation.id,
+    unreadCount: 0,
+    runs: []
   };
   automations.set(automation.id, automation);
   await persistStore();
@@ -495,6 +576,22 @@ app.get("/api/automations", (_req, res) => {
   res.json({ automations: [...automations.values()] });
 });
 
+app.post("/api/automations/preview", (req, res) => {
+  const { title, schedule, prompt, instruction } = req.body as {
+    title?: string;
+    schedule?: string;
+    prompt?: string;
+    instruction?: string;
+  };
+  const parsed = parseAutomationInput({ title, schedule, prompt, instruction });
+  res.json({
+    preview: {
+      ...parsed,
+      nextRunAt: computeNextRunAt(parsed.schedule)
+    }
+  });
+});
+
 app.patch("/api/automations/:id", async (req, res) => {
   const automation = automations.get(req.params.id);
   if (!automation) {
@@ -502,10 +599,54 @@ app.patch("/api/automations/:id", async (req, res) => {
     return;
   }
 
-  const body = req.body as Partial<Pick<Automation, "title" | "schedule" | "enabled">>;
+  const body = req.body as Partial<Pick<Automation, "title" | "schedule" | "prompt" | "enabled">> & {
+    instruction?: string;
+  };
+  if (typeof body.instruction === "string") {
+    const parsed = parseAutomationInput({ instruction: body.instruction });
+    automation.title = parsed.title;
+    automation.schedule = parsed.schedule;
+    automation.prompt = parsed.prompt;
+  }
   if (typeof body.title === "string") automation.title = body.title.trim() || automation.title;
-  if (typeof body.schedule === "string") automation.schedule = body.schedule.trim() || automation.schedule;
+  if (typeof body.schedule === "string") automation.schedule = normalizeScheduleText(body.schedule) || automation.schedule;
+  if (typeof body.prompt === "string") automation.prompt = body.prompt.trim() || automation.prompt;
   if (typeof body.enabled === "boolean") automation.enabled = body.enabled;
+  automation.updatedAt = now();
+  automation.nextRunAt = automation.enabled ? computeNextRunAt(automation.schedule) : automation.nextRunAt;
+  automation.lastStatus = automation.lastStatus || "never";
+  if (!automation.conversationId) automation.conversationId = createAutomationConversation(automation.title).id;
+  automation.runs = automation.runs || [];
+  automation.unreadCount = automation.unreadCount || 0;
+  await persistStore();
+  res.json({ automation });
+});
+
+app.post("/api/automations/:id/run", async (req, res) => {
+  const automation = automations.get(req.params.id);
+  if (!automation) {
+    res.status(404).json({ error: "automation not found" });
+    return;
+  }
+  if (runningAutomations.has(automation.id)) {
+    res.status(409).json({ error: "automation is already running" });
+    return;
+  }
+  void runAutomation(automation, "manual");
+  res.status(202).json({ automation: { ...automation, lastStatus: "running" } });
+});
+
+app.post("/api/automations/:id/read", async (req, res) => {
+  const automation = automations.get(req.params.id);
+  if (!automation) {
+    res.status(404).json({ error: "automation not found" });
+    return;
+  }
+  automation.runs?.forEach((run) => {
+    run.unread = false;
+  });
+  automation.unreadCount = 0;
+  automation.updatedAt = now();
   await persistStore();
   res.json({ automation });
 });
@@ -557,13 +698,13 @@ app.post("/api/tools/run-command", async (req, res) => {
     return;
   }
 
-  const denied = deniedCommandPatterns.find((pattern) => pattern.test(command));
-  if (denied) {
+  const blocked = getBlockedCommandReason(command);
+  if (blocked) {
     res.status(403).json({
       ok: false,
       code: 403,
       stdout: "",
-      stderr: `Command blocked by SuperCodex safety policy: ${command}`
+      stderr: `Command blocked by SuperCodex automatic safety policy (${blocked}): ${command}`
     });
     return;
   }
@@ -593,13 +734,15 @@ app.listen(port, () => {
 });
 
 function writeAgentEvent(res: express.Response, event: AgentEvent) {
+  if (res.destroyed || res.writableEnded) return;
   res.write(`data: ${JSON.stringify(event)}\n\n`);
 }
 
 async function runAgentLoop(
   conversation: Conversation,
   config?: ApiConfig,
-  onEvent?: (event: AgentEvent) => void
+  onEvent?: (event: AgentEvent) => void,
+  signal?: AbortSignal
 ): Promise<AgentResult> {
   const project = projects.get(conversation.projectId);
   const conversationAttachments = getConversationAttachments(conversation.id);
@@ -622,8 +765,10 @@ async function runAgentLoop(
   const toolCalls: AgentResult["toolCalls"] = [];
 
   for (let turns = 1; turns <= maxAgentTurns; turns++) {
+    assertNotAborted(signal);
     onEvent?.({ type: "step", turn: turns, message: `第 ${turns} 步：模型正在判断是否需要调用工具。` });
-    const response = await callLLM(chatMessages, config, true);
+    const response = await callLLM(chatMessages, config, true, signal);
+    assertNotAborted(signal);
     const message = response.choices?.[0]?.message;
     if (!message) throw new Error("LLM returned no choices");
 
@@ -645,12 +790,14 @@ async function runAgentLoop(
       });
 
       for (const toolCall of message.tool_calls) {
+        assertNotAborted(signal);
         onEvent?.({
           type: "step",
           turn: turns,
           message: `第 ${turns} 步：正在执行工具 ${toolCall.function.name}。`
         });
         const result = await executeToolCall(toolCall, context);
+        assertNotAborted(signal);
         toolCalls.push({
           id: toolCall.id,
           name: toolCall.function.name,
@@ -689,6 +836,7 @@ async function runAgentLoop(
     };
     conversation.messages.push(finalMessage);
     conversation.updatedAt = finalMessage.createdAt;
+    conversation.summary = summarizeConversation(conversation);
     await persistStore();
     onEvent?.({ type: "final", turn: turns, message: finalMessage, conversation, toolCalls });
     return { finalMessage, toolCalls, turns };
@@ -700,8 +848,10 @@ async function runAgentLoop(
       { role: "system", content: "Tool budget exhausted. Give a final answer from the available evidence." }
     ],
     config,
-    false
+    false,
+    signal
   );
+  assertNotAborted(signal);
   const finalMessage: Message = {
     id: id("message"),
     role: "assistant",
@@ -710,12 +860,13 @@ async function runAgentLoop(
   };
   conversation.messages.push(finalMessage);
   conversation.updatedAt = finalMessage.createdAt;
+  conversation.summary = summarizeConversation(conversation);
   await persistStore();
   onEvent?.({ type: "final", turn: maxAgentTurns, message: finalMessage, conversation, toolCalls });
   return { finalMessage, toolCalls, turns: maxAgentTurns };
 }
 
-async function callLLM(messages: ChatMessage[], config?: ApiConfig, enableTools = false) {
+async function callLLM(messages: ChatMessage[], config?: ApiConfig, enableTools = false, signal?: AbortSignal) {
   const effective = {
     baseUrl: normalizeBaseUrl(config?.baseUrl || settings.baseUrl),
     apiKey: config?.apiKey || settings.apiKey,
@@ -740,7 +891,8 @@ async function callLLM(messages: ChatMessage[], config?: ApiConfig, enableTools 
       messages,
       ...(toolDefinitions.length > 0 ? { tools: toolDefinitions, tool_choice: "auto" } : {}),
       temperature: 0.2
-    })
+    }),
+    signal
   });
 
   const payload = (await upstream.json()) as ChatCompletionResponse;
@@ -749,6 +901,12 @@ async function callLLM(messages: ChatMessage[], config?: ApiConfig, enableTools 
   }
 
   return payload;
+}
+
+function assertNotAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw new Error("Agent run aborted");
+  }
 }
 
 function registerTools() {
@@ -1043,7 +1201,10 @@ function registerTools() {
       const outputName =
         sanitizeFileName(String(args.outputName || "")) ||
         `${path.parse(attachment.originalName).name}-edited.${format === "jpeg" ? "jpg" : format}`;
-      const outputPath = path.join(path.dirname(attachment.path), `${id("image")}-${outputName}`);
+      const conversation = conversations.get(attachment.conversationId);
+      const artifactDir = conversation ? path.join(getConversationDir(conversation), "artifacts") : path.dirname(attachment.path);
+      await fs.mkdir(artifactDir, { recursive: true });
+      const outputPath = path.join(artifactDir, `${id("image")}-${outputName}`);
 
       let pipeline = sharp(attachment.path);
       const crop = args.crop as Record<string, unknown> | undefined;
@@ -1081,6 +1242,7 @@ function registerTools() {
         size: stat.size,
         path: outputPath,
         kind: "image",
+        source: "artifact",
         createdAt: now(),
         derivedFrom: attachment.id
       };
@@ -1238,6 +1400,217 @@ function sanitizeToolResult(toolName: string, result: string) {
   ].join("\n");
 }
 
+function startAutomationScheduler() {
+  void runDueAutomations();
+  setInterval(() => {
+    void runDueAutomations();
+  }, 30_000);
+}
+
+async function runDueAutomations() {
+  const dueAutomations = [...automations.values()].filter((automation) => {
+    if (!automation.enabled || runningAutomations.has(automation.id)) return false;
+    if (!automation.nextRunAt) automation.nextRunAt = computeNextRunAt(automation.schedule);
+    return Boolean(automation.nextRunAt && Date.parse(automation.nextRunAt) <= Date.now());
+  });
+
+  for (const automation of dueAutomations) {
+    await runAutomation(automation, "schedule");
+  }
+}
+
+async function runAutomation(automation: Automation, trigger: AutomationRun["trigger"] = "schedule") {
+  runningAutomations.add(automation.id);
+  const run: AutomationRun = {
+    id: id("run"),
+    trigger,
+    startedAt: now(),
+    status: "running"
+  };
+  automation.runs = [run, ...(automation.runs || [])].slice(0, 20);
+  automation.lastStatus = "running";
+  automation.lastRunAt = run.startedAt;
+  automation.updatedAt = run.startedAt;
+  await persistStore();
+
+  try {
+    const conversation = getAutomationConversation(automation);
+    const userMessage: Message = {
+      id: id("message"),
+      role: "user",
+      content: [
+        `执行定时任务：${automation.title}`,
+        "",
+        automation.prompt,
+        "",
+        "请直接完成任务并给出可以展示给用户的结果。"
+      ].join("\n"),
+      createdAt: now()
+    };
+    conversation.messages.push(userMessage);
+    conversation.updatedAt = userMessage.createdAt;
+    await persistStore();
+
+    const result = await runAgentLoop(conversation);
+    const documentAttachment = await saveGeneratedTextAttachment(
+      conversation.id,
+      `${sanitizeFileName(automation.title || "automation-result")}-${new Date().toISOString().slice(0, 10)}.md`,
+      [
+        `# ${automation.title}`,
+        "",
+        `- 执行时间：${formatLocalDateTime(new Date())}`,
+        `- 时间规则：${automation.schedule}`,
+        "",
+        "## 任务",
+        "",
+        automation.prompt,
+        "",
+        "## 结果",
+        "",
+        result.finalMessage.content
+      ].join("\n")
+    );
+    result.finalMessage.attachments = [
+      ...(result.finalMessage.attachments || []),
+      publicAttachment(documentAttachment)
+    ];
+    run.status = "success";
+    run.finishedAt = now();
+    run.result = result.finalMessage.content.slice(0, 1000);
+    run.documentAttachmentId = documentAttachment.id;
+    run.documentName = documentAttachment.originalName;
+    run.unread = true;
+    automation.lastStatus = "success";
+    automation.lastResult = result.finalMessage.content.slice(0, 1000);
+    automation.lastError = "";
+    automation.lastDocumentAttachmentId = documentAttachment.id;
+    automation.lastDocumentName = documentAttachment.originalName;
+    automation.runCount = (automation.runCount || 0) + 1;
+    automation.unreadCount = (automation.unreadCount || 0) + 1;
+  } catch (error) {
+    run.status = "error";
+    run.finishedAt = now();
+    run.error = error instanceof Error ? error.message : "Unknown automation error";
+    run.unread = true;
+    automation.lastStatus = "error";
+    automation.lastError = run.error;
+    automation.unreadCount = (automation.unreadCount || 0) + 1;
+  } finally {
+    automation.nextRunAt = computeNextRunAt(automation.schedule, new Date(Date.now() + 1000));
+    automation.updatedAt = now();
+    runningAutomations.delete(automation.id);
+    await persistStore();
+  }
+}
+
+function parseAutomationInput(input: {
+  title?: string;
+  schedule?: string;
+  prompt?: string;
+  instruction?: string;
+}) {
+  const instruction = normalizeWhitespace(input.instruction || "");
+  const schedule = normalizeScheduleText(input.schedule || extractScheduleText(instruction));
+  const prompt = normalizeWhitespace(input.prompt || extractAutomationPrompt(instruction, schedule) || instruction || input.title || "执行这个定时任务。");
+  return {
+    title: normalizeWhitespace(input.title || titleFromPrompt(prompt || instruction || "新自动化")),
+    schedule: schedule || "手动触发",
+    prompt
+  };
+}
+
+function extractScheduleText(instruction: string) {
+  const interval = instruction.match(/每\s*(\d+)\s*(?:h|H|小时|个小时)/);
+  if (interval) return `每${interval[1]}小时`;
+  if (/每\s*(?:天|日)|每天|每日/.test(instruction)) {
+    const time = extractTimeOfDay(instruction);
+    if (time) return `每天 ${time}`;
+  }
+  if (/下班前|下班之前/.test(instruction)) return "每天 17:30";
+  const time = extractTimeOfDay(instruction);
+  return time ? `每天 ${time}` : "";
+}
+
+function extractAutomationPrompt(instruction: string, schedule: string) {
+  if (!instruction) return "";
+  let prompt = instruction;
+  prompt = prompt.replace(/每\s*(\d+)\s*(?:h|H|小时|个小时)/g, "");
+  prompt = prompt.replace(/每天|每日|每日上午|每天上午|每天早上|每天中午|每天下午|每天晚上|每天早晨|每天下午|每晚/g, "");
+  prompt = prompt.replace(/凌晨|早上|早晨|上午|中午|下午|晚上|晚间|夜里/g, "");
+  prompt = prompt.replace(/下班前|下班之前/g, "");
+  if (schedule) {
+    const time = schedule.match(/\d{1,2}:\d{2}/)?.[0];
+    if (time) {
+      const [hour, minute] = time.split(":").map(Number);
+      prompt = prompt
+        .replace(new RegExp(`${hour}\\s*[:：]\\s*${minute.toString().padStart(2, "0")}`), "")
+        .replace(new RegExp(`${hour}\\s*点\\s*${minute ? `${minute}\\s*分?` : ""}`), "");
+    }
+  }
+  return normalizeWhitespace(prompt.replace(/^(提醒|返回|推送|生成|完成)?/, "$1").replace(/[，,。；;]\s*$/, "")) || instruction;
+}
+
+function normalizeScheduleText(value: string) {
+  const text = normalizeWhitespace(value);
+  if (!text) return "";
+  const interval = text.match(/每\s*(\d+)\s*(?:h|H|小时|个小时)/);
+  if (interval) return `每${Math.max(1, Number(interval[1]))}小时`;
+  if (/下班前|下班之前/.test(text)) return "每天 17:30";
+  const time = extractTimeOfDay(text);
+  if (time) return `每天 ${time}`;
+  if (/手动/.test(text)) return "手动触发";
+  return text;
+}
+
+function extractTimeOfDay(text: string) {
+  const colon = text.match(/(\d{1,2})\s*[:：]\s*(\d{1,2})/);
+  if (colon) return formatTime(Number(colon[1]), Number(colon[2]));
+  const chinese = text.match(/(?:(凌晨|早上|早晨|上午|中午|下午|晚上|晚间|夜里)\s*)?(\d{1,2})\s*点(?:\s*(\d{1,2})\s*分?)?/);
+  if (!chinese) return "";
+  let hour = Number(chinese[2]);
+  const minute = Number(chinese[3] || 0);
+  const period = chinese[1] || "";
+  if ((period === "下午" || period === "晚上" || period === "晚间" || period === "夜里") && hour < 12) hour += 12;
+  if (period === "中午" && hour < 11) hour += 12;
+  return formatTime(hour, minute);
+}
+
+function formatTime(hour: number, minute: number) {
+  const safeHour = Math.max(0, Math.min(23, hour));
+  const safeMinute = Math.max(0, Math.min(59, minute));
+  return `${safeHour.toString().padStart(2, "0")}:${safeMinute.toString().padStart(2, "0")}`;
+}
+
+function computeNextRunAt(schedule: string, from = new Date()) {
+  const normalized = normalizeScheduleText(schedule);
+  if (!normalized || normalized === "手动触发") return undefined;
+  const interval = normalized.match(/^每(\d+)小时$/);
+  if (interval) {
+    return new Date(from.getTime() + Math.max(1, Number(interval[1])) * 60 * 60 * 1000).toISOString();
+  }
+  const daily = normalized.match(/^每天\s+(\d{1,2}):(\d{2})$/);
+  if (daily) {
+    const next = new Date(from);
+    next.setHours(Number(daily[1]), Number(daily[2]), 0, 0);
+    if (next.getTime() <= from.getTime()) next.setDate(next.getDate() + 1);
+    return next.toISOString();
+  }
+  return undefined;
+}
+
+function createAutomationConversation(title: string) {
+  const project = [...projects.values()][0] || createProject("SuperCodex");
+  return createConversation(project.id, `自动化：${title}`);
+}
+
+function getAutomationConversation(automation: Automation) {
+  const existing = automation.conversationId ? conversations.get(automation.conversationId) : undefined;
+  if (existing) return existing;
+  const conversation = createAutomationConversation(automation.title);
+  automation.conversationId = conversation.id;
+  return conversation;
+}
+
 async function initializeStore() {
   try {
     const raw = await fs.readFile(dataFile, "utf-8");
@@ -1248,8 +1621,15 @@ async function initializeStore() {
     store.automations.forEach((automation) => automations.set(automation.id, automation));
     store.attachments?.forEach((attachment) => attachments.set(attachment.id, attachment));
     ensureSeedSkills();
+    migrateAttachments();
+    migrateConversationStorage();
+    migrateAutomations();
+    await persistStore();
   } catch {
     seedState();
+    migrateAttachments();
+    migrateConversationStorage();
+    migrateAutomations();
     await persistStore();
   }
 }
@@ -1264,12 +1644,176 @@ async function persistStore() {
     attachments: [...attachments.values()]
   };
   await fs.writeFile(dataFile, JSON.stringify(store, null, 2), "utf-8");
+  await persistConversationFiles();
+}
+
+function migrateConversationStorage() {
+  for (const conversation of conversations.values()) {
+    if (!conversation.folderName || isGenericConversationFolder(conversation.folderName)) {
+      conversation.folderName = conversationFolderName(conversation.title || "conversation");
+    }
+    if (!conversation.summary) {
+      conversation.summary = summarizeConversation(conversation);
+    }
+  }
+}
+
+async function persistConversationFiles() {
+  await fs.mkdir(conversationsDir, { recursive: true });
+  await Promise.all([...conversations.values()].map((conversation) => persistConversationFilesFor(conversation)));
+}
+
+async function persistConversationFilesFor(conversation: Conversation) {
+  const dir = getConversationDir(conversation);
+  await fs.mkdir(path.join(dir, "uploads"), { recursive: true });
+  await fs.mkdir(path.join(dir, "artifacts"), { recursive: true });
+  await fs.writeFile(path.join(dir, "overview.md"), renderConversationOverview(conversation), "utf-8");
+  await fs.writeFile(
+    path.join(dir, "messages.json"),
+    JSON.stringify(
+      {
+        id: conversation.id,
+        projectId: conversation.projectId,
+        title: conversation.title,
+        shortcut: conversation.shortcut,
+        updatedAt: conversation.updatedAt,
+        summary: conversation.summary || summarizeConversation(conversation),
+        messages: conversation.messages
+      },
+      null,
+      2
+    ),
+    "utf-8"
+  );
+}
+
+function getConversationDir(conversation: Conversation) {
+  if (!conversation.folderName) conversation.folderName = conversationFolderName(conversation.title || "conversation");
+  return path.join(conversationsDir, `${conversation.folderName}-${shortId(conversation.id)}`);
+}
+
+function conversationFolderName(title: string) {
+  const safe = sanitizeFileName(title || "conversation")
+    .replace(/\.+$/g, "")
+    .slice(0, 72);
+  return safe || "conversation";
+}
+
+function renderConversationOverview(conversation: Conversation) {
+  const createdAt = getConversationCreatedAt(conversation);
+  const conversationAttachments = getConversationAttachments(conversation.id);
+  const uploaded = conversationAttachments.filter((attachment) => attachment.source !== "artifact");
+  const artifacts = conversationAttachments.filter((attachment) => attachment.source === "artifact");
+  return [
+    `# ${conversation.title}`,
+    "",
+    `- 对话 ID：${conversation.id}`,
+    `- 创建时间：${createdAt ? formatLocalDateTime(new Date(createdAt)) : "-"}`,
+    `- 最近更新：${formatLocalDateTime(new Date(conversation.updatedAt))}`,
+    `- 消息数：${conversation.messages.length}`,
+    `- 用户上传：${uploaded.length}`,
+    `- 产生文件：${artifacts.length}`,
+    "",
+    "## 总结",
+    "",
+    conversation.summary || summarizeConversation(conversation),
+    "",
+    "## 用户上传数据",
+    "",
+    uploaded.length ? uploaded.map((attachment) => `- ${attachment.originalName} (${attachment.mimeType}, ${attachment.size} bytes)`).join("\n") : "暂无",
+    "",
+    "## 产生的文件数据",
+    "",
+    artifacts.length ? artifacts.map((attachment) => `- ${attachment.originalName} (${attachment.mimeType}, ${attachment.size} bytes)`).join("\n") : "暂无"
+  ].join("\n");
+}
+
+function summarizeConversation(conversation: Conversation) {
+  const userMessages = conversation.messages
+    .filter((message): message is Message => message.role === "user")
+    .map((message) => message.content)
+    .filter(Boolean);
+  const assistantMessages = conversation.messages
+    .filter((message): message is Message => message.role === "assistant")
+    .map((message) => message.content)
+    .filter(Boolean);
+  const firstUser = userMessages[0] || "暂无用户请求";
+  const lastAssistant = assistantMessages.at(-1) || "";
+  return [
+    `本次对话围绕“${firstUser.slice(0, 120)}”展开。`,
+    lastAssistant ? `最近一次助手回复摘要：${lastAssistant.slice(0, 180)}` : "当前还没有形成完整回复。"
+  ].join("\n");
+}
+
+async function generateConversationTitle(prompt: string, config?: ApiConfig) {
+  const fallback = classifyConversationTitle(prompt);
+  const effectiveApiKey = config?.apiKey || settings.apiKey;
+  if (!effectiveApiKey) return fallback;
+  try {
+    const response = await callLLM(
+      [
+        {
+          role: "system",
+          content:
+            "你是对话标题分类器。根据用户请求生成一个中文短标题，要求：8到16个字，名词短语，不要标点，不要解释，不要照抄完整用户输入。"
+        },
+        { role: "user", content: prompt }
+      ],
+      config,
+      false
+    );
+    const title = sanitizeGeneratedTitle(response.choices?.[0]?.message?.content || "");
+    return title || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function sanitizeGeneratedTitle(value: string) {
+  return normalizeWhitespace(value)
+    .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+    .replace(/[。！？!?,，；;：:]+$/g, "")
+    .slice(0, 32);
+}
+
+function classifyConversationTitle(prompt: string) {
+  const text = normalizeWhitespace(prompt);
+  if (/自动化|定时|每天|每周|提醒|下班前|早上|上午|下午|晚上|每\d+\s*(?:h|小时)/i.test(text)) {
+    return "自动化任务设置";
+  }
+  if (/新闻|资讯|热搜|日报|早报|晚报/.test(text)) return "新闻资讯整理";
+  if (/A股|股票|早盘|收盘|行情|市场|指数|板块/i.test(text)) return "市场行情分析";
+  if (/PPT|幻灯片|演示|deck/i.test(text)) return "演示文稿制作";
+  if (/图片|照片|裁剪|缩放|旋转|格式/.test(text)) return "图片处理任务";
+  if (/项目|代码|构建|测试|bug|修复|实现|架构/.test(text)) return "项目代码工作";
+  if (/邮件|回复|email|mail/i.test(text)) return "邮件处理任务";
+  if (/文件|文档|整理|总结|报告/.test(text)) return "文档整理总结";
+  return titleFromPrompt(text);
+}
+
+function isGenericConversationTitle(title: string) {
+  return ["新任务", "暂无对话"].includes(title) || title.startsWith("项目工作：");
+}
+
+function isGenericConversationFolder(folderName?: string) {
+  if (!folderName) return true;
+  return /^(新任务|暂无对话|项目工作|conversation|attachment)$/.test(folderName);
+}
+
+function getConversationCreatedAt(conversation: Conversation) {
+  return conversation.messages[0]?.createdAt || conversation.updatedAt;
+}
+
+function shortId(value: string) {
+  return value.replace(/^[^_]+_/, "").slice(0, 8);
 }
 
 async function saveAttachment(conversationId: string, file: Express.Multer.File): Promise<Attachment> {
+  const conversation = conversations.get(conversationId);
+  if (!conversation) throw new Error("conversation not found");
   const safeName = sanitizeFileName(file.originalname || "attachment");
   const fileId = id("attachment");
-  const conversationUploadDir = path.join(uploadDir, conversationId);
+  const conversationUploadDir = path.join(getConversationDir(conversation), "uploads");
   await fs.mkdir(conversationUploadDir, { recursive: true });
   const filePath = path.join(conversationUploadDir, `${fileId}-${safeName}`);
   await fs.writeFile(filePath, file.buffer);
@@ -1282,6 +1826,33 @@ async function saveAttachment(conversationId: string, file: Express.Multer.File)
     size: file.size,
     path: filePath,
     kind: inferAttachmentKind(file.mimetype, safeName),
+    source: "upload",
+    createdAt: now()
+  };
+  attachments.set(attachment.id, attachment);
+  return attachment;
+}
+
+async function saveGeneratedTextAttachment(conversationId: string, originalName: string, content: string) {
+  const conversation = conversations.get(conversationId);
+  if (!conversation) throw new Error("conversation not found");
+  const safeName = sanitizeFileName(originalName || "automation-result.md");
+  const fileId = id("attachment");
+  const artifactDir = path.join(getConversationDir(conversation), "artifacts");
+  await fs.mkdir(artifactDir, { recursive: true });
+  const filePath = path.join(artifactDir, `${fileId}-${safeName}`);
+  await fs.writeFile(filePath, content, "utf-8");
+  const stat = await fs.stat(filePath);
+  const attachment: Attachment = {
+    id: fileId,
+    conversationId,
+    originalName: safeName,
+    fileName: path.basename(filePath),
+    mimeType: "text/markdown; charset=utf-8",
+    size: stat.size,
+    path: filePath,
+    kind: "text",
+    source: "artifact",
     createdAt: now()
   };
   attachments.set(attachment.id, attachment);
@@ -1296,6 +1867,7 @@ function publicAttachment(attachment: Attachment) {
     mimeType: attachment.mimeType,
     size: attachment.size,
     kind: attachment.kind,
+    source: attachment.source,
     createdAt: attachment.createdAt,
     url: `/api/attachments/${attachment.id}/content`,
     derivedFrom: attachment.derivedFrom
@@ -1382,6 +1954,34 @@ function seedState() {
   createConversation(desktop.id, "@github openai/codex.git", "⌘3");
 }
 
+function migrateAttachments() {
+  for (const attachment of attachments.values()) {
+    if (attachment.source) continue;
+    attachment.source =
+      attachment.derivedFrom || attachment.path.includes(`${path.sep}artifacts${path.sep}`)
+        ? "artifact"
+        : "upload";
+  }
+}
+
+function migrateAutomations() {
+  for (const automation of automations.values()) {
+    automation.prompt = automation.prompt || automation.title || "执行这个定时任务。";
+    automation.schedule = normalizeScheduleText(automation.schedule || "手动触发") || "手动触发";
+    automation.lastStatus = automation.lastStatus || "never";
+    automation.runCount = automation.runCount || 0;
+    automation.unreadCount = automation.unreadCount || 0;
+    automation.runs = automation.runs || [];
+    automation.updatedAt = automation.updatedAt || automation.createdAt;
+    if (!automation.conversationId) {
+      automation.conversationId = createAutomationConversation(automation.title).id;
+    }
+    if (automation.enabled && !automation.nextRunAt) {
+      automation.nextRunAt = computeNextRunAt(automation.schedule);
+    }
+  }
+}
+
 function ensureSeedSkills() {
   const existing = new Map(skills);
   [
@@ -1437,7 +2037,8 @@ function createConversation(projectId: string, title: string, shortcut?: string)
     title,
     shortcut,
     updatedAt: now(),
-    messages: []
+    messages: [],
+    folderName: conversationFolderName(title)
   };
   conversations.set(conversation.id, conversation);
   projects.get(projectId)?.conversations.push(conversation.id);
@@ -1479,7 +2080,7 @@ function safeResolvePath(inputPath: string, basePath = workspaceRoot) {
 function sanitizeFileName(value: string) {
   return path
     .basename(value)
-    .replace(/[^\w.-]+/g, "_")
+    .replace(/[^\p{L}\p{N}_.-]+/gu, "_")
     .replace(/^_+/, "")
     .slice(0, 160) || "attachment";
 }
@@ -1525,9 +2126,15 @@ async function inferTestCommand(projectPath: string) {
 }
 
 function assertCommandAllowed(command: string) {
-  if (deniedCommandPatterns.some((pattern) => pattern.test(command))) {
-    throw new Error(`Command blocked by SuperCodex safety policy: ${command}`);
+  const blocked = getBlockedCommandReason(command);
+  if (blocked) {
+    throw new Error(`Command blocked by SuperCodex automatic safety policy (${blocked}): ${command}`);
   }
+}
+
+function getBlockedCommandReason(command: string) {
+  const normalized = command.replace(/\\\n/g, " ").replace(/\s+/g, " ").trim();
+  return blockedCommandRules.find((rule) => rule.pattern.test(normalized))?.reason || "";
 }
 
 async function getWebBridgeStatus() {
@@ -1762,6 +2369,18 @@ function normalizeBaseUrl(value?: string) {
 
 function now() {
   return new Date().toISOString();
+}
+
+function formatLocalDateTime(date: Date) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  }).format(date);
 }
 
 function id(prefix: string) {

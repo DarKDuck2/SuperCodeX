@@ -1,0 +1,543 @@
+{
+  "id": "conversation_532969d1-0ce1-4c7b-a907-a145c454f8ed",
+  "projectId": "project_7f99b965-a74f-418d-b486-fa1ce6e41d2a",
+  "title": "涨薪幅度一般在多少？",
+  "shortcut": "⌘9",
+  "updatedAt": "2026-06-08T13:35:03.408Z",
+  "summary": "本次对话围绕“你好”展开。\n最近一次助手回复摘要：虽然搜索结果有限，但结合我掌握的信息，下面给你一份详细的涨薪幅度参考👇\n\n---\n\n# 📈 互联网算法岗涨薪幅度全解析\n\n## 一、不同场景的涨薪幅度\n\n### 🚀 跳槽涨薪（最常见）\n\n| 级别 | 普通水平 | 理想水平 | 天花板（有竞品offer） |\n|------|---------|---------|------------------",
+  "messages": [
+    {
+      "id": "message_12d1ab8c-90cb-4f1e-a070-ab3760d72b2e",
+      "role": "user",
+      "content": "你好",
+      "attachments": [],
+      "createdAt": "2026-06-08T12:18:40.139Z"
+    },
+    {
+      "id": "message_560883d8-1fae-4453-9f82-cdebe94bdd13",
+      "role": "assistant",
+      "content": "你好！👋\n\n我是 **SuperCodex**，你的智能办公助手。我可以帮你处理各种办公任务，比如：\n\n- ✉️ **邮件处理** — 撰写、回复、管理邮件\n- 📄 **文档工作** — 创建、编辑、整理文档\n- 🔍 **搜索调研** — 信息检索、资料收集\n- 📅 **会议与计划** — 日程安排、会议纪要\n- ⚙️ **自动化** — 跨应用工作流、批量处理\n- 💻 **代码与运维** — 文件操作、脚本编写、测试等\n\n有什么需要我帮忙的吗？尽管说！😊",
+      "createdAt": "2026-06-08T12:18:42.539Z"
+    },
+    {
+      "id": "message_4426c9f2-0813-42ec-b15a-cc5695365a42",
+      "role": "user",
+      "content": "互联网算法和HR谈薪有什么技巧和注意点",
+      "attachments": [],
+      "createdAt": "2026-06-08T12:19:12.698Z"
+    },
+    {
+      "id": "message_1b9853a7-fa7d-46fc-858f-3b50ea712c3f",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_ynozHwfGKQDmtQD8yalX8278",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"query\": \"互联网算法岗 HR谈薪技巧 注意事项 2024 2025\", \"num\": 8}"
+          }
+        },
+        {
+          "index": 1,
+          "id": "call_01_AWluEiJLGyo0vl4GOEpA0091",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"query\": \"算法工程师 薪资谈判 话术 策略\", \"num\": 8}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T12:19:14.795Z"
+    },
+    {
+      "id": "message_83d010af-5f12-4133-9778-b541bd76429f",
+      "role": "tool",
+      "content": "1. 超级互联 - Smart Connect - Windows官方下载 | 微软应用 ...\nURL: https://apps.microsoft.com/detail/xp8jrf5sxv03zm?hl=zh-cn&gl=cn\nDescription: 超级互联能够以前所未有的方式将您的个人生态系统连接在一起。 专为流畅多任务操作与设备控制而设计。 无论是应用跨屏，搜索文件，还是管理内容，超级互联都可以简化您与您的设备互动的方式。\nEngine: bing\n\n2. O+ Connect\nURL: https://connect.oppo.com/\nDescription: 2026年5月27日 · O+ Connect is an official app designed for cross-device collaboration between OPPO/OnePlus/realme phone or tablet and your PC. Enjoy seamless file transfer and remote …\nEngine: bing\n\n3. 互联_百度百科\nURL: https://baike.baidu.com/item/%E4%BA%92%E8%81%94/3827205\nDescription: 互联（interconnection/interconnect）是指物理网络间通过物理连接线路建立的连接，需确保通信协议兼容以实现跨网络通信及资源共享。 其实现依赖路由器、网关等设备，形成覆盖更广的互联系统，国 …\nEngine: bing\n\n4. 网易UU远程官网_真4K、真免费、真好用\nURL: http://uuyc.163.com/\nDescription: 5 天之前 · 高清高帧，无损还原 PC 画质 游戏云键盘，百款方案省心秒用 适配多款游戏手柄，即插即用 查看更多 远程协助 免费实用 远程协助易上手 安全可控，一键禁止远程协助 跨端互联，PC/手机跨设 …\nEngine: bing\n\n5. ‎OPPO 互联 App - App Store\nURL: https://apps.apple.com/cn/app/oppo-%E4%BA%92%E8%81%94/id6504797905\nDescription: 2025年2月25日 · 在 App Store 下载“Guangdong Heytap Technology Corp., Ltd.”的“OPPO 互联”。 查看截屏、评分及评论、用户提示以及更多类似“OPPO 互联”的 App。\nEngine: bing\n\n6. 1995-2025：中国互联网三十年发展全事件解析\nURL: https://zhuanlan.zhihu.com/p/20488595055\nDescription: 1995-2025：中国互联网三十年发展全事件解析 （完整版：含区块链技术演进与AI基础关联） 第一阶段：破土萌芽（1995-2000） 关键事件与影响1994年4月：中国全功能接入国际互联网简述：通过中关 …\nEngine: bing\n\n7. AI 开发者管理平台 - QQ互联\nURL: https://connect.qq.com/\nDescription: 2026年4月28日 · 开放QQ能力，实现高效社交推广 为开发者提供AI互联、移动应用、网站应用三大核心能力，助力产品快速触达亿级用户\nEngine: bing\n\n8. 超算互联网\nURL: https://www.scnet.cn/home/internet/index.html\nDescription: 2024.4 国家超算互联网平台正式上线，互联互通全国14个省区市20+超算智算中心；召开首届“超算互联网峰会”，发布《超算互联网白皮书》 2024.10 承担国家数据局“全国一体化算力网算力监测调度先行 …\nEngine: bing",
+      "tool_call_id": "call_00_ynozHwfGKQDmtQD8yalX8278",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T12:19:15.867Z"
+    },
+    {
+      "id": "message_b91a2471-fa26-425a-83e0-a0460dceb1ed",
+      "role": "tool",
+      "content": "1. 算法（解题方案的准确而完整的描述）_百度百科\nURL: https://baike.baidu.com/item/%E7%AE%97%E6%B3%95/209025\nDescription: 算法（Algorithm）是指解题方案的准确而完整的描述，是一系列解决问题的清晰指令，算法代表着用系统的方法描述解决问题的策略 …\nEngine: bing\n\n2. 算法入门教程（十大经典算法图解） - C语言中文网\nURL: https://c.biancheng.net/algorithm_tutorial/\nDescription: 2026年5月12日 · 学习算法，可以短时间内快速提升「遇到问题，解决问题」的能力。 算法的种类有很多（比如十大经典算法之类）， …\nEngine: bing\n\n3. 算法基础与分析方法 - 菜鸟教程\nURL: https://www.runoob.com/data-structures/dsa-basic-algorithm.html\nDescription: 无论是手机上的导航软件为你规划最短路径，还是搜索引擎在毫秒间从海量数据中找出最相关的网页，背后都依赖于精心设计的算法。 …\nEngine: bing\n\n4. 算法是什么，算法简介（通俗易懂） - 知乎\nURL: https://zhuanlan.zhihu.com/p/688978688\nDescription: 2024年3月25日 · 什么是算法 算法（Algorism）一词最初出现在 12 世纪，是用于表示十进制算术运算的规则。 18 世纪，算法 …\nEngine: bing\n\n5. Hello 算法\nURL: https://www.hello-algo.com/\nDescription: 2026年5月29日 · 推荐语 “一本通俗易懂的数据结构与算法入门书，引导读者手脑并用地学习，强烈推荐算法初学者阅读。 ” —— 邓俊 …\nEngine: bing\n\n6. 代码随想录-全网最全算法数据结构刷题学习路线|图文+视频 ...\nURL: https://www.programmercarl.com/\nDescription: 3 天之前 · 代码随想录是一个免费开源的算法学习平台，由程序员Carl耗时5年精心打磨而成，提供科学刷题顺序、全套图文和视频题解 …\nEngine: bing\n\n7. 力扣 (LeetCode) 全球极客挚爱的技术成长平台\nURL: https://leetcode.cn/\nDescription: 2026年5月31日 · 平安银行 · 算法工程师 · 深圳罗湖 · 正编内推划重点：· 32岁以内· 非应届毕业生（不招应届，已毕业来）· 5年以下经 …\nEngine: bing\n\n8. 算法简介：什么是算法？——定义、历史与应用详解-CSDN博客\nURL: https://blog.csdn.net/qq_40254606/article/details/140252741\nDescription: 2024年7月7日 · 在计算机科学中，算法无处不在。 它们被用来解决各种各样的问题，从简单的算术运算到复杂的数据处理和机器学习 …\nEngine: bing",
+      "tool_call_id": "call_01_AWluEiJLGyo0vl4GOEpA0091",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T12:19:16.289Z"
+    },
+    {
+      "id": "message_0a40911e-96be-4a16-a5fe-cc59af2aafe5",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_kGItEjIwlyD8TREFJHHH0249",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"query\": \"互联网大厂 算法岗 offer谈判 薪资结构 技巧\", \"num\": 8}"
+          }
+        },
+        {
+          "index": 1,
+          "id": "call_01_l5cLGl9y08QvNT9Ttkao0118",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"query\": \"算法岗 HR谈薪 如何argue 股票 签字费\", \"num\": 8}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T12:19:18.373Z"
+    },
+    {
+      "id": "message_769f8d36-2d0d-4976-bf49-06575b1376c4",
+      "role": "tool",
+      "content": "1. 超级互联 - Smart Connect - Windows官方下载 | 微软应用 ...\nURL: https://apps.microsoft.com/detail/xp8jrf5sxv03zm?hl=zh-cn&gl=cn\nDescription: 超级互联能够以前所未有的方式将您的个人生态系统连接在一起。 专为流畅多任务操作与设备控制而设计。 无论是应用跨屏，搜索文件，还是管理内容，超级互联都可以简化您与您的设备互动的方式。\nEngine: bing\n\n2. O+ Connect\nURL: https://connect.oppo.com/\nDescription: 2026年5月27日 · O+ Connect is an official app designed for cross-device collaboration between OPPO/OnePlus/realme phone or tablet and your PC. Enjoy seamless file transfer and remote …\nEngine: bing\n\n3. 互联_百度百科\nURL: https://baike.baidu.com/item/%E4%BA%92%E8%81%94/3827205\nDescription: 互联（interconnection/interconnect）是指物理网络间通过物理连接线路建立的连接，需确保通信协议兼容以实现跨网络通信及资源共享。 其实现依赖路由器、网关等设备，形成覆盖更广的互联系统，国 …\nEngine: bing\n\n4. 网易UU远程官网_真4K、真免费、真好用\nURL: http://uuyc.163.com/\nDescription: 5 天之前 · 高清高帧，无损还原 PC 画质 游戏云键盘，百款方案省心秒用 适配多款游戏手柄，即插即用 查看更多 远程协助 免费实用 远程协助易上手 安全可控，一键禁止远程协助 跨端互联，PC/手机跨设 …\nEngine: bing\n\n5. ‎OPPO 互联 App - App Store\nURL: https://apps.apple.com/cn/app/oppo-%E4%BA%92%E8%81%94/id6504797905\nDescription: 2025年2月25日 · 在 App Store 下载“Guangdong Heytap Technology Corp., Ltd.”的“OPPO 互联”。 查看截屏、评分及评论、用户提示以及更多类似“OPPO 互联”的 App。\nEngine: bing\n\n6. 1995-2025：中国互联网三十年发展全事件解析\nURL: https://zhuanlan.zhihu.com/p/20488595055\nDescription: 1995-2025：中国互联网三十年发展全事件解析 （完整版：含区块链技术演进与AI基础关联） 第一阶段：破土萌芽（1995-2000） 关键事件与影响1994年4月：中国全功能接入国际互联网简述：通过中关 …\nEngine: bing\n\n7. AI 开发者管理平台 - QQ互联\nURL: https://connect.qq.com/\nDescription: 2026年4月28日 · 开放QQ能力，实现高效社交推广 为开发者提供AI互联、移动应用、网站应用三大核心能力，助力产品快速触达亿级用户\nEngine: bing\n\n8. 超算互联网\nURL: https://www.scnet.cn/home/internet/index.html\nDescription: 2024.4 国家超算互联网平台正式上线，互联互通全国14个省区市20+超算智算中心；召开首届“超算互联网峰会”，发布《超算互联网白皮书》 2024.10 承担国家数据局“全国一体化算力网算力监测调度先行 …\nEngine: bing",
+      "tool_call_id": "call_00_kGItEjIwlyD8TREFJHHH0249",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T12:19:18.879Z"
+    },
+    {
+      "id": "message_f8c6b9cc-b72e-4d18-b023-7366d34e5a30",
+      "role": "tool",
+      "content": "1. 算法（解题方案的准确而完整的描述）_百度百科\nURL: https://baike.baidu.com/item/%E7%AE%97%E6%B3%95/209025\nDescription: 算法（Algorithm）是指解题方案的准确而完整的描述，是一系列解决问题的清晰指令，算法代表着用系统的方法描述解决问题的策略机制。 也就是说，能够对一定规范的输入，在有限时间内获得所要求的 …\nEngine: bing\n\n2. 算法入门教程（十大经典算法图解） - C语言中文网\nURL: https://c.biancheng.net/algorithm_tutorial/\nDescription: 2026年5月12日 · 学习算法，可以短时间内快速提升「遇到问题，解决问题」的能力。 算法的种类有很多（比如十大经典算法之类），本教程涵盖了几乎所有常用的算法，包括动态规划、分治、贪心、排序 …\nEngine: bing\n\n3. 算法基础与分析方法 - 菜鸟教程\nURL: https://www.runoob.com/data-structures/dsa-basic-algorithm.html\nDescription: 无论是手机上的导航软件为你规划最短路径，还是搜索引擎在毫秒间从海量数据中找出最相关的网页，背后都依赖于精心设计的算法。 理解算法的基础和分析方法，是每一位程序员从代码实现者迈向问题 …\nEngine: bing\n\n4. 算法是什么，算法简介（通俗易懂） - 知乎\nURL: https://zhuanlan.zhihu.com/p/688978688\nDescription: 2024年3月25日 · 什么是算法 算法（Algorism）一词最初出现在 12 世纪，是用于表示十进制算术运算的规则。 18 世纪，算法 Algorism 演变为 Algorithm，算法概念有了更广的含义。 任何定义明确的计算 …\nEngine: bing\n\n5. Hello 算法\nURL: https://www.hello-algo.com/\nDescription: 2026年5月29日 · 推荐语 “一本通俗易懂的数据结构与算法入门书，引导读者手脑并用地学习，强烈推荐算法初学者阅读。 ” —— 邓俊辉，清华大学计算机系教授 “如果我当年学数据结构与算法的时候有 …\nEngine: bing\n\n6. 代码随想录-全网最全算法数据结构刷题学习路线|图文+视频 ...\nURL: https://www.programmercarl.com/\nDescription: 3 天之前 · 代码随想录是一个免费开源的算法学习平台，由程序员Carl耗时5年精心打磨而成，提供科学刷题顺序、全套图文和视频题解、面试八股文大全、项目资源、训练营以及简历制作工具。\nEngine: bing\n\n7. 力扣 (LeetCode) 全球极客挚爱的技术成长平台\nURL: https://leetcode.cn/\nDescription: 2026年5月31日 · 平安银行 · 算法工程师 · 深圳罗湖 · 正编内推划重点：· 32岁以内· 非应届毕业生（不招应届，已毕业来）· 5年以下经验 985/211· 5年以上经验 统招本科就行（学校放宽） 正编，不是外 …\nEngine: bing\n\n8. 算法简介：什么是算法？——定义、历史与应用详解-CSDN博客\nURL: https://blog.csdn.net/qq_40254606/article/details/140252741\nDescription: 2024年7月7日 · 在计算机科学中，算法无处不在。 它们被用来解决各种各样的问题，从简单的算术运算到复杂的数据处理和机器学习。 算法是编程的基础，每一个程序都是一个或多个算法的实现。 掌握 …\nEngine: bing",
+      "tool_call_id": "call_01_l5cLGl9y08QvNT9Ttkao0118",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T12:19:19.314Z"
+    },
+    {
+      "id": "message_16f81571-2771-4d4d-9e7d-bb43c61df350",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_ZoX7QaQeLaJry5EcUuGD5510",
+          "type": "function",
+          "function": {
+            "name": "fetch_url",
+            "arguments": "{\"url\": \"https://www.zhihu.com/topic/19816600/hot\"}"
+          }
+        },
+        {
+          "index": 1,
+          "id": "call_01_pyLdbwHbDBKVgpGGJoK55786",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"query\": \"site:zhihu.com 算法岗 谈薪 技巧 HR\", \"num\": 5}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T12:19:21.456Z"
+    },
+    {
+      "id": "message_0373b537-0f4b-4fd9-a9d9-028d3726d99c",
+      "role": "tool",
+      "content": "Fetched page: https://www.zhihu.com/topic/19816600/hot\nReadable text:\n知乎，让每一次点击都充满意义 —— 欢迎来到知乎，发现问题背后的世界。",
+      "tool_call_id": "call_00_ZoX7QaQeLaJry5EcUuGD5510",
+      "toolName": "fetch_url",
+      "createdAt": "2026-06-08T12:19:21.553Z"
+    },
+    {
+      "id": "message_e8afca81-8130-428e-9fdf-5d18f666c172",
+      "role": "tool",
+      "content": "1. 算法（解题方案的准确而完整的描述）_百度百科\nURL: https://baike.baidu.com/item/%E7%AE%97%E6%B3%95/209025\nDescription: 算法（Algorithm）是指解题方案的准确而完整的描述，是一系列解决问题的清晰指令，算法代表着用系统的方法描述解决问题的策略机制。 也就是说，能够对一定规范的输入，在有限时间内获得所要求的 …\nEngine: bing\n\n2. 算法入门教程（十大经典算法图解） - C语言中文网\nURL: https://c.biancheng.net/algorithm_tutorial/\nDescription: 2026年5月12日 · 学习算法，可以短时间内快速提升「遇到问题，解决问题」的能力。 算法的种类有很多（比如十大经典算法之类），本教程涵盖了几乎所有常用的算法，包括动态规划、分治、贪心、排序 …\nEngine: bing\n\n3. 算法基础与分析方法 - 菜鸟教程\nURL: https://www.runoob.com/data-structures/dsa-basic-algorithm.html\nDescription: 无论是手机上的导航软件为你规划最短路径，还是搜索引擎在毫秒间从海量数据中找出最相关的网页，背后都依赖于精心设计的算法。 理解算法的基础和分析方法，是每一位程序员从代码实现者迈向问题 …\nEngine: bing\n\n4. 算法是什么，算法简介（通俗易懂） - 知乎\nURL: https://zhuanlan.zhihu.com/p/688978688\nDescription: 2024年3月25日 · 什么是算法 算法（Algorism）一词最初出现在 12 世纪，是用于表示十进制算术运算的规则。 18 世纪，算法 Algorism 演变为 Algorithm，算法概念有了更广的含义。 任何定义明确的计算 …\nEngine: bing\n\n5. Hello 算法\nURL: https://www.hello-algo.com/\nDescription: 2026年5月29日 · 推荐语 “一本通俗易懂的数据结构与算法入门书，引导读者手脑并用地学习，强烈推荐算法初学者阅读。 ” —— 邓俊辉，清华大学计算机系教授 “如果我当年学数据结构与算法的时候有 …\nEngine: bing",
+      "tool_call_id": "call_01_pyLdbwHbDBKVgpGGJoK55786",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T12:19:22.033Z"
+    },
+    {
+      "id": "message_b4f283df-74ac-4e8e-b056-2d371c9bae66",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_YZH3teyLtzd8BAvhl8JT5437",
+          "type": "function",
+          "function": {
+            "name": "fetch_url",
+            "arguments": "{\"url\": \"https://zhuanlan.zhihu.com/p/666984116\"}"
+          }
+        },
+        {
+          "index": 1,
+          "id": "call_01_M3wsvsbSojCWLGAn5mQQ7232",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"query\": \"互联网大厂薪资谈判 算法 HR 如何谈总包 股票期权\", \"num\": 8}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T12:19:24.055Z"
+    },
+    {
+      "id": "message_fa764a9a-c7d3-4415-b5b6-10e601e33bbe",
+      "role": "tool",
+      "content": "Fetched page: https://zhuanlan.zhihu.com/p/666984116\nReadable text:\n知乎，让每一次点击都充满意义 —— 欢迎来到知乎，发现问题背后的世界。",
+      "tool_call_id": "call_00_YZH3teyLtzd8BAvhl8JT5437",
+      "toolName": "fetch_url",
+      "createdAt": "2026-06-08T12:19:24.155Z"
+    },
+    {
+      "id": "message_16d2bdfe-b439-419b-80dd-46125d2f5eb9",
+      "role": "tool",
+      "content": "1. 超级互联 - Smart Connect - Windows官方下载 | 微软应用 ...\nURL: https://apps.microsoft.com/detail/xp8jrf5sxv03zm?hl=zh-cn&gl=cn\nDescription: 超级互联能够以前所未有的方式将您的个人生态系统连接在一起。 专为流畅多任务操作与设备控制而设计。 无论是应用跨屏，搜索文件，还是管理内容，超级互联都可以简化您与您的设备互动的方式。\nEngine: bing\n\n2. O+ Connect\nURL: https://connect.oppo.com/\nDescription: 2026年5月27日 · O+ Connect is an official app designed for cross-device collaboration between OPPO/OnePlus/realme phone or tablet and your PC. Enjoy seamless file transfer and remote …\nEngine: bing\n\n3. 互联_百度百科\nURL: https://baike.baidu.com/item/%E4%BA%92%E8%81%94/3827205\nDescription: 互联（interconnection/interconnect）是指物理网络间通过物理连接线路建立的连接，需确保通信协议兼容以实现跨网络通信及资源共享。 其实现依赖路由器、网关等设备，形成覆盖更广的互联系统，国 …\nEngine: bing\n\n4. 网易UU远程官网_真4K、真免费、真好用\nURL: http://uuyc.163.com/\nDescription: 5 天之前 · 高清高帧，无损还原 PC 画质 游戏云键盘，百款方案省心秒用 适配多款游戏手柄，即插即用 查看更多 远程协助 免费实用 远程协助易上手 安全可控，一键禁止远程协助 跨端互联，PC/手机跨设 …\nEngine: bing\n\n5. ‎OPPO 互联 App - App Store\nURL: https://apps.apple.com/cn/app/oppo-%E4%BA%92%E8%81%94/id6504797905\nDescription: 2025年2月25日 · 在 App Store 下载“Guangdong Heytap Technology Corp., Ltd.”的“OPPO 互联”。 查看截屏、评分及评论、用户提示以及更多类似“OPPO 互联”的 App。\nEngine: bing\n\n6. 1995-2025：中国互联网三十年发展全事件解析\nURL: https://zhuanlan.zhihu.com/p/20488595055\nDescription: 1995-2025：中国互联网三十年发展全事件解析 （完整版：含区块链技术演进与AI基础关联） 第一阶段：破土萌芽（1995-2000） 关键事件与影响1994年4月：中国全功能接入国际互联网简述：通过中关 …\nEngine: bing\n\n7. AI 开发者管理平台 - QQ互联\nURL: https://connect.qq.com/\nDescription: 2026年4月28日 · 开放QQ能力，实现高效社交推广 为开发者提供AI互联、移动应用、网站应用三大核心能力，助力产品快速触达亿级用户\nEngine: bing\n\n8. 超算互联网\nURL: https://www.scnet.cn/home/internet/index.html\nDescription: 2024.4 国家超算互联网平台正式上线，互联互通全国14个省区市20+超算智算中心；召开首届“超算互联网峰会”，发布《超算互联网白皮书》 2024.10 承担国家数据局“全国一体化算力网算力监测调度先行 …\nEngine: bing",
+      "tool_call_id": "call_01_M3wsvsbSojCWLGAn5mQQ7232",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T12:19:24.651Z"
+    },
+    {
+      "id": "message_0817c070-9e6d-4d42-8aa4-e9a75512b2de",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_hkEmgYYBlkDgChZvJZ1A2942",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"query\": \"\\\"算法岗\\\" \\\"谈薪\\\" \\\"HR\\\" 技巧 注意\", \"num\": 10}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T12:19:26.235Z"
+    },
+    {
+      "id": "message_4dcc7b37-b3a5-46ed-98ef-c8563a8ac1a5",
+      "role": "tool",
+      "content": "1. 算法（解题方案的准确而完整的描述）_百度百科\nURL: https://baike.baidu.com/item/%E7%AE%97%E6%B3%95/209025\nDescription: 算法（Algorithm）是指解题方案的准确而完整的描述，是一系列解决问题的清晰指令，算法代表着用系统的方法描述解决问题的策略机制。 也就是说，能够对一定规范的输入，在有限时间内获得所要求的 …\nEngine: bing\n\n2. 算法入门教程（十大经典算法图解） - C语言中文网\nURL: https://c.biancheng.net/algorithm_tutorial/\nDescription: 2026年5月12日 · 学习算法，可以短时间内快速提升「遇到问题，解决问题」的能力。 算法的种类有很多（比如十大经典算法之类），本教程涵盖了几乎所有常用的算法，包括动态规划、分治、贪心、排序 …\nEngine: bing\n\n3. 算法基础与分析方法 - 菜鸟教程\nURL: https://www.runoob.com/data-structures/dsa-basic-algorithm.html\nDescription: 无论是手机上的导航软件为你规划最短路径，还是搜索引擎在毫秒间从海量数据中找出最相关的网页，背后都依赖于精心设计的算法。 理解算法的基础和分析方法，是每一位程序员从代码实现者迈向问题 …\nEngine: bing\n\n4. 算法是什么，算法简介（通俗易懂） - 知乎\nURL: https://zhuanlan.zhihu.com/p/688978688\nDescription: 2024年3月25日 · 什么是算法 算法（Algorism）一词最初出现在 12 世纪，是用于表示十进制算术运算的规则。 18 世纪，算法 Algorism 演变为 Algorithm，算法概念有了更广的含义。 任何定义明确的计算 …\nEngine: bing\n\n5. Hello 算法\nURL: https://www.hello-algo.com/\nDescription: 2026年5月29日 · 推荐语 “一本通俗易懂的数据结构与算法入门书，引导读者手脑并用地学习，强烈推荐算法初学者阅读。 ” —— 邓俊辉，清华大学计算机系教授 “如果我当年学数据结构与算法的时候有 …\nEngine: bing\n\n6. 代码随想录-全网最全算法数据结构刷题学习路线|图文+视频 ...\nURL: https://www.programmercarl.com/\nDescription: 3 天之前 · 代码随想录是一个免费开源的算法学习平台，由程序员Carl耗时5年精心打磨而成，提供科学刷题顺序、全套图文和视频题解、面试八股文大全、项目资源、训练营以及简历制作工具。\nEngine: bing\n\n7. 力扣 (LeetCode) 全球极客挚爱的技术成长平台\nURL: https://leetcode.cn/\nDescription: 2026年5月31日 · 平安银行 · 算法工程师 · 深圳罗湖 · 正编内推划重点：· 32岁以内· 非应届毕业生（不招应届，已毕业来）· 5年以下经验 985/211· 5年以上经验 统招本科就行（学校放宽） 正编，不是外 …\nEngine: bing\n\n8. 算法简介：什么是算法？——定义、历史与应用详解-CSDN博客\nURL: https://blog.csdn.net/qq_40254606/article/details/140252741\nDescription: 2024年7月7日 · 在计算机科学中，算法无处不在。 它们被用来解决各种各样的问题，从简单的算术运算到复杂的数据处理和机器学习。 算法是编程的基础，每一个程序都是一个或多个算法的实现。 掌握 …\nEngine: bing",
+      "tool_call_id": "call_00_hkEmgYYBlkDgChZvJZ1A2942",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T12:19:26.685Z"
+    },
+    {
+      "id": "message_66c40dd0-1a51-4fb0-b8d0-0737c3fddb3d",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_tGvYmvEzOCvkvNZgn66w3079",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"query\": \"offer谈判 互联网 算法 总包 如何谈薪资\", \"num\": 10}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T12:19:28.387Z"
+    },
+    {
+      "id": "message_469524f8-3cc8-4e5c-9bb0-8bae4c4e5161",
+      "role": "tool",
+      "content": "1. offer（英语单词）_百度百科\nURL: https://baike.baidu.com/item/offer/31797\nDescription: 固定搭配如“on offer”（可获得的）、“under offer”（交易中）等常见于商贸与日常生活。 该词的古英语词源“offrian”原指宗教仪式中的“献祭”，15世纪后逐渐扩展为“主动提出”的现代语义，并衍生出商业谈判 …\nEngine: bing\n\n2. 一份正式的offer必须有哪些内容？ - 知乎\nURL: https://zhuanlan.zhihu.com/p/339640768\nDescription: 2022年1月16日 · Offer的中文释义就是企业方给求职者的 聘用意向书，谨记offer只是企业 单方面 给求职者发的聘用意向书，求职者可以接受或拒绝offer。 接过的offer也不少于10份了，但是很多offer都是扯 …\nEngine: bing\n\n3. 公司发offer是什么意思？关于offer，找工作时你必须知道的3件事\nURL: https://www.toutiao.com/article/6992066981562450445/\nDescription: 2021年8月3日 · 问：公司发offer是什么意思？ 先说说offer是什么意思，确切地说，offer的全称是offer letter，可以翻译成录用信、录用通知。 它是用人单位发送给求职者的录用凭证。 通常是在一系列面 …\nEngine: bing\n\n4. offer是什么意思_offer的翻译_音标_读音_用法_例句_爱词霸 ...\nURL: https://www.iciba.com/word?w=offer\nDescription: I offer a simple proposition in response: Many of our problems—class attendance, educational success, student happiness and well-being—might be improved by cutting down the bureaucratic ( ' , 官僚的) …\nEngine: bing\n\n5. OFFER中文 (简体)翻译：剑桥词典 - Cambridge Dictionary\nURL: https://dictionary.cambridge.org/zhs/%E8%AF%8D%E5%85%B8/%E8%8B%B1%E8%AF%AD-%E6%B1%89%E8%AF%AD-%E7%AE%80%E4%BD%93/offer\nDescription: When we offer, we ask someone if they would like to have something or if they would like us to do something for them. We usually say yes, please or no, thanks when we reply to offers. …\nEngine: bing\n\n6. 校园招聘 - offer星球 - 最新校招信息一站式查询平台\nURL: https://offer.gfjianli.com/\nDescription: 1 天前 · offer星球校园招聘频道为你提供最新、最全的校园招聘信息。 包括知名企业内推码、招聘流程、工作地点、岗位需求等详细信息。 及时掌握名企校招动态，助你快人一步获得理想offer！\nEngine: bing\n\n7. Offer - 搜索 词典\nURL: https://global.bing.com/dict/search?q=Offer&FORM=BDVSP6&cc=cn\nDescription: 必应词典为您提供Offer的释义，美 [ˈɑfər]，英 [ˈɒfə (r)]，n. 报价；出价；建议；主动提议； v. 供应；奉献；主动提出；自愿给予； 网络释义： 提供；发盘；报盘；\nEngine: bing\n\n8. offer是什么意思？中文释义、例句与同义词 | Dictionary.net\nURL: https://www.dictionary.net/zh/dictionary/offer\nDescription: offer的准确中文释义、定义与同义词辨析，Dictionary.net 提供 offer的真实场景例句、发音怎么读及用法指南，助您轻松掌握单词含义。\nEngine: bing",
+      "tool_call_id": "call_00_tGvYmvEzOCvkvNZgn66w3079",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T12:19:28.855Z"
+    },
+    {
+      "id": "message_22ffcc36-7953-4729-aac2-332a382a1bc0",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_RqW3duCy1BxT7iLx69Jt4019",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"query\": \"程序员 跳槽 谈薪 技巧 策略 2024 2025\", \"num\": 10}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T12:19:30.447Z"
+    },
+    {
+      "id": "message_0151a8ae-addf-470d-a484-df4c10e64eb2",
+      "role": "tool",
+      "content": "1. 程序（计算机程序）_百度百科\nURL: https://baike.baidu.com/item/%E7%A8%8B%E5%BA%8F/13831935\nDescription: 计算机程序（Computer Program），港、台译做电脑程式。 计算机程序是一组计算机能识别和执行的指令，运行于电子计算机上，满足人们某种需求的信息化工具。 它以某些程序设计语言编写，运行于 …\nEngine: bing\n\n2. CSDN_专业开发者社区\nURL: https://www.csdn.net/\nDescription: 2026年5月25日 · 首先介绍了目标文件 (.o)作为ELF格式的基本单元，其通过静态链接合并为可执行程序的过程。 重点剖析了ELF文件结构，包括Section合并为Segment的优化策略，以及操作系统如何根 …\nEngine: bing\n\n3. 菜鸟教程\nURL: https://www.runoob.com/\nDescription: Python 数据分析与可视化 Web 框架。 【学习 Jupyter Notebook】 交互式数据分析与计算工具。 【学习 Pillow】 Python 图像处理库。 【量化交易】 利用程序化策略进行金融交易。 【学习 R】 用于统计 …\nEngine: bing\n\n4. 电脑极简科普13：什么是程序？什么是软件？什么是代码 ...\nURL: https://zhuanlan.zhihu.com/p/1890010832223597775\nDescription: 2025年3月31日 · 一、程序和软件首先要理解，电脑可以实现这么多的功能，又能唱歌（播放音乐）、又能上网聊天、又能打游戏......其实，电脑不知道它在干啥。 它只是按照人类的预先设定，在我们执行 …\nEngine: bing\n\n5. 微信小程序\nURL: https://mp.weixin.qq.com/cgi-bin/wx\nDescription: 2025年8月8日 · 小程序是一种新的开放能力，可以在微信内被便捷地获取和传播，同时具有出色的使用体验。 小程序开发者可在小程序内提供便捷、丰富的服务，如预订、商品购买、游戏、信息查询等。\nEngine: bing\n\n6. 程序 _ 百科\nURL: https://baike.sogou.com/v66045.htm\nDescription: 为实现预期目的而进行操作的一系列语句和指令。 一般分为系统程序和应用程序两大类。 计算机中的程序在港澳台地区称为程式。 程序就是为使电子计算机执行一个或多个操作，或执行某一任务，按序 …\nEngine: bing\n\n7. 欢迎来到 Python.org - Python 编程语言\nURL: https://pythonlang.cn/\nDescription: 2026年2月4日 · >>> Python 软件基金会 Python 软件基金会的使命是推广、保护和推进 Python 编程语言，并支持和促进多元化和国际化的 Python 程序员社区的发展。 了解更多 成为会员 向 PSF 捐款\nEngine: bing\n\n8. 微信，是一个生活方式\nURL: https://www.wechatapp.com/\nDescription: 微信支付 公众号 小程序 视频号助手 小游戏 微信小店 表情开放平台 搜一搜开放平台 红包封面开放平台 对话开放平台 开放社区 服务市场 企业微信 微信学堂 官方设计资源 开放平台 硬件平台 微信广告 官 …\nEngine: bing",
+      "tool_call_id": "call_00_RqW3duCy1BxT7iLx69Jt4019",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T12:19:30.949Z"
+    },
+    {
+      "id": "message_f7445f5d-f855-4a63-b79b-26fa9a6041d7",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_hbxiYnedWnKRtufCEWtW0084",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"query\": \"\\\"谈薪\\\" \\\"互联网\\\" \\\"算法\\\" 技巧 话术 攻略\", \"num\": 10}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T12:19:32.478Z"
+    },
+    {
+      "id": "message_7e1bbad6-26e0-41c9-908c-6175d627c8a1",
+      "role": "tool",
+      "content": "1. 谈（汉语文字）_百度百科\nURL: https://baike.baidu.com/item/%E8%B0%88/84201\nDescription: 该字在古籍中多用于表述对话与议论，《说文解字》释为“语也”，《广韵》注作“言论”，《诗经》载“不敢戏谈”印证其早期用法。 除言 …\nEngine: bing\n\n2. 谈 tán - 汉典\nURL: http://zdic.net/hans/%E8%B0%88\nDescription: 又如:谈笑自若;谈聚 (相聚在一起尽情交谈);谈会 (聚在一起谈论);洽谈 (接洽商谈);座谈 (不拘形式地讨论);谈天 (谈论天文) 相处融洽 [get …\nEngine: bing\n\n3. 谈的意思,谈的解释,谈的拼音,谈的部首,谈的笔顺-汉语国学\nURL: https://www.hanyuguoxue.com/zidian/zi-35848\nDescription: 谈的拼音是tán，谈字共10画，部首是讠部，本页介绍谈字的意思，谈的详细解释，谈的读音、笔顺，还包括谈的翻译、输入法、异体 …\nEngine: bing\n\n4. 谈_谈怎么读_谈的意思 - 汉语字典\nURL: https://www.chagushici.com/zidian/%E8%B0%88\nDescription: 基本字义 谈 （談） tán ㄊㄢˊ 说，对话：谈天。 谈心。 谈论。 谈话。 谈判。 谈吐。 恳谈。 洽谈。 漫谈。 谈笑风生。 言论，听说的 …\nEngine: bing\n\n5. 谈怎么读_谈的拼音 - 新华字典\nURL: https://zidian.gushici.net/10/8c08.html\nDescription: 2026年5月21日 · 常 标 谈 基本解释 基本字义 谈 （談） tán ㄊㄢˊ 说，对话：～天。 ～心。 ～论。 ～话。 ～判。 ～吐。 恳～。 洽～ …\nEngine: bing\n\n6. 谈的读音、意思、部首、笔顺及组词 - 新华字典\nURL: https://www.ufanv.cn/zidian/%E8%B0%88\nDescription: 从言，炎声。 本义是说，谈论。 〔谈〕字仓颉码是 IVFF，五笔是 YOOY，四角号码是 39789，郑码是 SUUO，中文电码是 6151，区 …\nEngine: bing\n\n7. 半月谈首页—半月谈网\nURL: http://www.banyuetan.org/\nDescription: 今日谈 一张“准生证”难倒电三轮中小企业 半月谈记者近期在全国最大的电三轮生产基地调研发现，现行检测机制存在检测资源垄断、 …\nEngine: bing\n\n8. 谈_汉字「谈」的拼音_谈的解释_谈什么意思_谈念什么 ...\nURL: https://www.39017.com/zidian/8C08.html\nDescription: 谈 汉字：谈 ... 异体字： 談 「谈」基本解释 谈 tán ㄊㄢˊ 1. 说，对话：～天。 ～心。 ～论。 ～话。 ～判。 ～吐。 恳～。 洽～。 …\nEngine: bing",
+      "tool_call_id": "call_00_hbxiYnedWnKRtufCEWtW0084",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T12:19:32.927Z"
+    },
+    {
+      "id": "message_fe2a3d67-e742-4f02-8f1d-5e8cd9a27fed",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_MOPINxevPKL3g7zBYYGZ5519",
+          "type": "function",
+          "function": {
+            "name": "fetch_url",
+            "arguments": "{\"url\": \"https://www.nowcoder.com/discuss/353159185016000512\"}"
+          }
+        },
+        {
+          "index": 1,
+          "id": "call_01_TVIqhSD0hKLAx9C1AWrc8043",
+          "type": "function",
+          "function": {
+            "name": "fetch_url",
+            "arguments": "{\"url\": \"https://www.zhihu.com/question/35194335\"}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T12:19:34.731Z"
+    },
+    {
+      "id": "message_27acc4c4-a8cf-4d5e-92ed-bb2e91978c99",
+      "role": "tool",
+      "content": "Fetched page: https://www.nowcoder.com/discuss/353159185016000512\nTitle: 牛客网 - 找工作神器|笔试题库|面试经验|实习招聘内推，求职就业一站解决_牛客网\nDescription: 求职之前，先上牛客，就业找工作一站解决。互联网IT技术/产品/运营/硬件/汽车机械制造/金融/财务管理/审计/银行/市场营销/地产/快消/管培生等等专业技能学习/备考/求职神器，在线进行企业校招实习笔试面试真题模拟考试练习，全面提升求职竞争力，找到好工作，拿到好offer。_牛客网_牛客在手,offer不愁\nReadable text:\n牛客网 - 找工作神器|笔试题库|面试经验|实习招聘内推，求职就业一站解决_牛客网 \n牛客网 \n牛客网在线编程 \n牛客网题解 \n牛客企业服务",
+      "tool_call_id": "call_00_MOPINxevPKL3g7zBYYGZ5519",
+      "toolName": "fetch_url",
+      "createdAt": "2026-06-08T12:19:34.870Z"
+    },
+    {
+      "id": "message_1d911f57-b108-4475-8846-d31666f3aff5",
+      "role": "tool",
+      "content": "Fetched page: https://www.zhihu.com/question/35194335\nReadable text:\n知乎，让每一次点击都充满意义 —— 欢迎来到知乎，发现问题背后的世界。",
+      "tool_call_id": "call_01_TVIqhSD0hKLAx9C1AWrc8043",
+      "toolName": "fetch_url",
+      "createdAt": "2026-06-08T12:19:34.970Z"
+    },
+    {
+      "id": "message_3ab442cc-7c7e-4bb0-88ab-f2e03bd13fbe",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_6zOvaIWXH9zg4y18xv8R6694",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"query\": \"年薪百万 算法工程师 offer谈判 总包构成 签字费 股票\", \"num\": 10}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T12:19:36.951Z"
+    },
+    {
+      "id": "message_5ff7ec16-953c-4233-967d-3869d508afe4",
+      "role": "tool",
+      "content": "1. 年薪制的人，工资是怎么发的？一文揭秘 - 知乎\nURL: https://zhuanlan.zhihu.com/p/621998427\nDescription: 2023年4月14日 · 年薪制的人怎么发工资？ 大家经常说的年薪，其实就是指以年度为单位，根据企业经营成果，确定并支付的薪水。 虽然年薪以年为单位，但并不意味着一年发一次。 毕竟经营成果这类评 …\nEngine: bing\n\n2. 年薪_百度百科\nURL: https://baike.baidu.com/item/%E5%B9%B4%E8%96%AA/3024451\nDescription: 2026年4月29日 · 从人力资源的角度看，年薪制是一种有效的激励措施，对提升绩效有很大的作用。 年薪制突破了薪资机构的常规，对 高层管理人员 来说，年薪制代表身份和地位，能够促进人才的建设， …\nEngine: bing\n\n3. 年薪12万和月薪1万，真的没有区别吗？错，两种薪酬完全不同 ...\nURL: https://www.36kr.com/p/2635582608851207\nDescription: 2024年2月6日 · 年薪50w，就已经不是堆量堆时间的问题了，无论是码农也好，公司的管理层也好，投行的投资经理，其实都在强调一个能力，你能够调动多少资源 ...\nEngine: bing\n\n4. 年薪个税计算器 - 年薪,年薪制,年薪百万计算\nURL: http://shui.bmizaixian.com/nianxin/\nDescription: 2026年3月4日 · 注：2、税后年薪注意应再扣除每月个人各项社会保险费用 年薪工资收入包括哪些： 年薪工资总额主要有以下六个部分组成， 根据《关于工资总额组成的规定》；工资包含计时工资;计件 …\nEngine: bing\n\n5. 年薪制构成详解，年薪制包括哪些部分？ • i人事\nURL: https://blog.ihr360.com/p/297521/\nDescription: 2025年9月21日 · 年薪制是一种以年度为单位核算员工薪酬的薪酬管理制度，其构成主要包括1、基本年薪；2、绩效年薪；3、年终奖金；4、福利补贴；5、特殊奖励与补偿等五大部分。 核心观点：年薪制 …\nEngine: bing\n\n6. 年薪到底是什么意思？你真的搞懂了吗？ - 合飞律师\nURL: https://www.hefeilaws.com/hf/1356160.html\nDescription: 2026年5月12日 · “年薪”不是你想的那么简单 很多人一听“年薪”，第一反应就是“一年赚多少钱”，听起来简单，但其实 年薪的定义远比你想象的复杂，从法律和实务角度看，年薪并不是一个单一的数字，而 …\nEngine: bing\n\n7. 同样是年薪20w，12薪、13薪、18薪，差别有多大？_腾讯新闻\nURL: https://news.qq.com/rain/a/20220323A0355F00\nDescription: 2022年3月23日 · 再举一个简单的例子，同样的年薪20w，12薪就代表着你每月税前16667元，13薪则意味着比12薪的税前少了近1300元钱，而18薪的话，咱就是说，平时税前 ...\nEngine: bing\n\n8. 年薪12万和月薪1万，两种薪酬完全不同，不懂吃亏\nURL: https://www.sohu.com/a/756759027_173488\nDescription: 2024年2月6日 · 但这里你要注意一下先后顺序，刚毕业头三年，是社会小白，此时更容易被所谓的年薪忽悠，此间HR也特别喜欢跟你谈年薪，为什么呢？ 因为小白最好用年薪来忽悠，小白也觉得“年薪”这 …\nEngine: bing",
+      "tool_call_id": "call_00_6zOvaIWXH9zg4y18xv8R6694",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T12:19:37.409Z"
+    },
+    {
+      "id": "message_136f56e6-aaf8-4056-8f88-82f248094885",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_ErEKaDmamQTxB8a3i6lF0609",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"query\": \"算法工程师 薪资谈判 如何跟HR谈薪资 注意事项\", \"num\": 10}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T12:19:38.945Z"
+    },
+    {
+      "id": "message_a9bacdca-8160-496a-98c7-c22912e5b5be",
+      "role": "tool",
+      "content": "1. 算法（解题方案的准确而完整的描述）_百度百科\nURL: https://baike.baidu.com/item/%E7%AE%97%E6%B3%95/209025\nDescription: 算法（Algorithm）是指解题方案的准确而完整的描述，是一系列解决问题的清晰指令，算法代表着用系统的方法描述解决问题的策略 …\nEngine: bing\n\n2. 算法入门教程（十大经典算法图解） - C语言中文网\nURL: https://c.biancheng.net/algorithm_tutorial/\nDescription: 2026年5月12日 · 学习算法，可以短时间内快速提升「遇到问题，解决问题」的能力。 算法的种类有很多（比如十大经典算法之类）， …\nEngine: bing\n\n3. 算法基础与分析方法 - 菜鸟教程\nURL: https://www.runoob.com/data-structures/dsa-basic-algorithm.html\nDescription: 无论是手机上的导航软件为你规划最短路径，还是搜索引擎在毫秒间从海量数据中找出最相关的网页，背后都依赖于精心设计的算法。 …\nEngine: bing\n\n4. 算法是什么，算法简介（通俗易懂） - 知乎\nURL: https://zhuanlan.zhihu.com/p/688978688\nDescription: 2024年3月25日 · 什么是算法 算法（Algorism）一词最初出现在 12 世纪，是用于表示十进制算术运算的规则。 18 世纪，算法 …\nEngine: bing\n\n5. Hello 算法\nURL: https://www.hello-algo.com/\nDescription: 2026年5月29日 · 推荐语 “一本通俗易懂的数据结构与算法入门书，引导读者手脑并用地学习，强烈推荐算法初学者阅读。 ” —— 邓俊 …\nEngine: bing\n\n6. 代码随想录-全网最全算法数据结构刷题学习路线|图文+视频 ...\nURL: https://www.programmercarl.com/\nDescription: 3 天之前 · 代码随想录是一个免费开源的算法学习平台，由程序员Carl耗时5年精心打磨而成，提供科学刷题顺序、全套图文和视频题解 …\nEngine: bing\n\n7. 力扣 (LeetCode) 全球极客挚爱的技术成长平台\nURL: https://leetcode.cn/\nDescription: 2026年5月31日 · 平安银行 · 算法工程师 · 深圳罗湖 · 正编内推划重点：· 32岁以内· 非应届毕业生（不招应届，已毕业来）· 5年以下经 …\nEngine: bing\n\n8. 算法简介：什么是算法？——定义、历史与应用详解-CSDN博客\nURL: https://blog.csdn.net/qq_40254606/article/details/140252741\nDescription: 2024年7月7日 · 在计算机科学中，算法无处不在。 它们被用来解决各种各样的问题，从简单的算术运算到复杂的数据处理和机器学习 …\nEngine: bing",
+      "tool_call_id": "call_00_ErEKaDmamQTxB8a3i6lF0609",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T12:19:39.429Z"
+    },
+    {
+      "id": "message_8ef447b1-2455-41e4-abc2-d1cdef916eb4",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_8z7b9V9egWGthUILI4t58388",
+          "type": "function",
+          "function": {
+            "name": "fetch_url",
+            "arguments": "{\"url\": \"https://www.zhihu.com/question/35194335/answer/3062450549\"}"
+          }
+        },
+        {
+          "index": 1,
+          "id": "call_01_qSagRbHxhCgCLMdBNnww0454",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"query\": \"\\\"HR谈薪\\\" \\\"招数\\\" \\\"算法\\\" OR \\\"技术岗\\\"\", \"num\": 10}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T12:19:41.849Z"
+    },
+    {
+      "id": "message_434a2565-7169-4824-9c26-4b24720776d2",
+      "role": "tool",
+      "content": "Fetched page: https://www.zhihu.com/question/35194335/answer/3062450549\nReadable text:\n知乎，让每一次点击都充满意义 —— 欢迎来到知乎，发现问题背后的世界。",
+      "tool_call_id": "call_00_8z7b9V9egWGthUILI4t58388",
+      "toolName": "fetch_url",
+      "createdAt": "2026-06-08T12:19:41.936Z"
+    },
+    {
+      "id": "message_6ce62a9e-f562-4a8f-9222-3ac69551bd81",
+      "role": "tool",
+      "content": "1. HR 是什么？岗位职责和工作内容有哪些？ - 知乎\nURL: https://www.zhihu.com/question/665761623\nDescription: 2024年8月30日 · ‌ HR ‌是人力资源（Human Resources）的简称，主要负责公司或组织的人力资源管理工作，包括招聘、培训、绩效管理、薪酬福利和劳动关系等方面。HR的工作旨在最大限度地利用和发 …\nEngine: bing\n\n2. 人力资源（管理心理学领域术语）_百度百科\nURL: https://baike.baidu.com/item/%E4%BA%BA%E5%8A%9B%E8%B5%84%E6%BA%90/127703\nDescription: 2026年5月18日 · 人力资源（Human Resources，简称“HR”）是指能够推动社会经济发展的劳动人口总和，包括知识、技能、经验等要素的综合体。 其核心涵盖人力资源规划、招聘配置、培训开发、绩效 …\nEngine: bing\n\n3. HR、HRA、HRD、HRM、HRS、CHO、HRBP傻傻分不清楚 ...\nURL: https://blog.csdn.net/abcwoabcwo/article/details/112168191\nDescription: 2025年9月1日 · 什么是HR、HRA、HRD、HRM、HRS、CHO、HRBP HR（Human Resource） 指人事专员。 负责寻找合适人才和面试求职者。 HRA （Human Resource assistant） 指人事助理。 接受 …\nEngine: bing\n\n4. 什么是 HR？| Oracle 中国\nURL: https://www.oracle.com/cn/human-capital-management/hr/what-is-hr/\nDescription: 3 天之前 · HR 的定义 有人可能会问 HR 到底代表什么。 对于这个问题，大多数回答都与工作场所相关，因为 HR 的全称是“人力资源 (Human Resource)”。 HR 还代表企业的整个劳动力队伍。 在企业内 …\nEngine: bing\n\n5. HR是什么意思 - 三茅人力资源网\nURL: https://www.hrloo.com/news/81892.html\nDescription: 2023年9月29日 · 摘要：本文将详细介绍HR的含义和职责，并探讨HR在组织中的重要性和作用。1.什么是HR？HR即人力资源（HumanResources），是指负责管理和协调组织内人力资源的部门或职能 …\nEngine: bing\n\n6. 人力资源HR是什么？为什么称为HR？ • i人事\nURL: https://blog.ihr360.com/p/44326/\nDescription: 2025年6月30日 · 人力资源被称为HR的原因主要包括：1、人力资源（Human Resources）的英文缩写即为HR；2、全球化趋势推动了英语词汇在职场中的普及；3、现代企业管理理念强调人才管理的专业 …\nEngine: bing\n\n7. 一站式人力资源管理知识平台- HRLab\nURL: https://www.hrlab.cn/\nDescription: 3 天之前 · HRLab聚焦薪酬绩效、招聘培训、人力资源规划等六大模块，汇聚人力资源政策与实践案例，解答人力资源管理难题，赋能HR成长 问题：绩效考核为何常流于形式 大量企业的绩效考核最后沦 …\nEngine: bing\n\n8. HTML <hr> 标签 - W3School.com.cn\nURL: https://www.w3school.com.cn/tags/tag_hr.asp\nDescription: <hr> 标签定义 HTML 页面中的主题分隔（例如，话题的转变）。 <hr> 元素通常显示为水平线，用于在 HTML 页面中分隔内容，或定义内容上的变化。 实例 例子 1 使用 <hr> 标签来定义内容中的主题变 …\nEngine: bing",
+      "tool_call_id": "call_01_qSagRbHxhCgCLMdBNnww0454",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T12:19:42.384Z"
+    },
+    {
+      "id": "message_f1a96500-f039-444e-bcb0-ffa8518a6e00",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_jKS7ZzzegtIiCijUu2Ek3677",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"query\": \"程序员谈薪资 四个技巧 HR压价 如何争取高薪\", \"num\": 8}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T12:19:44.091Z"
+    },
+    {
+      "id": "message_53090943-75fa-46da-b5f5-8c6614a207bd",
+      "role": "tool",
+      "content": "1. 程序（计算机程序）_百度百科\nURL: https://baike.baidu.com/item/%E7%A8%8B%E5%BA%8F/13831935\nDescription: 计算机程序（Computer Program），港、台译做电脑程式。 计算机程序是一组计算机能识别和执行的指令，运行于电子计算机上，满足人们某种需求的信息化工具。 它以某些程序设计语言编写，运行于 …\nEngine: bing\n\n2. CSDN_专业开发者社区\nURL: https://www.csdn.net/\nDescription: 2026年5月25日 · 首先介绍了目标文件 (.o)作为ELF格式的基本单元，其通过静态链接合并为可执行程序的过程。 重点剖析了ELF文件结构，包括Section合并为Segment的优化策略，以及操作系统如何根 …\nEngine: bing\n\n3. 菜鸟教程\nURL: https://www.runoob.com/\nDescription: Python 数据分析与可视化 Web 框架。 【学习 Jupyter Notebook】 交互式数据分析与计算工具。 【学习 Pillow】 Python 图像处理库。 【量化交易】 利用程序化策略进行金融交易。 【学习 R】 用于统计 …\nEngine: bing\n\n4. 电脑极简科普13：什么是程序？什么是软件？什么是代码 ...\nURL: https://zhuanlan.zhihu.com/p/1890010832223597775\nDescription: 2025年3月31日 · 一、程序和软件首先要理解，电脑可以实现这么多的功能，又能唱歌（播放音乐）、又能上网聊天、又能打游戏......其实，电脑不知道它在干啥。 它只是按照人类的预先设定，在我们执行 …\nEngine: bing\n\n5. 微信小程序\nURL: https://mp.weixin.qq.com/cgi-bin/wx\nDescription: 2025年8月8日 · 小程序是一种新的开放能力，可以在微信内被便捷地获取和传播，同时具有出色的使用体验。 小程序开发者可在小程序内提供便捷、丰富的服务，如预订、商品购买、游戏、信息查询等。\nEngine: bing\n\n6. 程序 _ 百科\nURL: https://baike.sogou.com/v66045.htm\nDescription: 为实现预期目的而进行操作的一系列语句和指令。 一般分为系统程序和应用程序两大类。 计算机中的程序在港澳台地区称为程式。 程序就是为使电子计算机执行一个或多个操作，或执行某一任务，按序 …\nEngine: bing\n\n7. 欢迎来到 Python.org - Python 编程语言\nURL: https://pythonlang.cn/\nDescription: 2026年2月4日 · >>> Python 软件基金会 Python 软件基金会的使命是推广、保护和推进 Python 编程语言，并支持和促进多元化和国际化的 Python 程序员社区的发展。 了解更多 成为会员 向 PSF 捐款\nEngine: bing\n\n8. 微信，是一个生活方式\nURL: https://www.wechatapp.com/\nDescription: 微信支付 公众号 小程序 视频号助手 小游戏 微信小店 表情开放平台 搜一搜开放平台 红包封面开放平台 对话开放平台 开放社区 服务市场 企业微信 微信学堂 官方设计资源 开放平台 硬件平台 微信广告 官 …\nEngine: bing",
+      "tool_call_id": "call_00_jKS7ZzzegtIiCijUu2Ek3677",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T12:19:44.584Z"
+    },
+    {
+      "id": "message_a0f600da-e710-4f33-a0f7-aefdeca3c754",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_lx0Cj3QkFSuna2jY30sk7899",
+          "type": "function",
+          "function": {
+            "name": "fetch_url",
+            "arguments": "{\"url\": \"https://www.zhihu.com/search?type=content&q=%E7%AE%97%E6%B3%95%E5%B2%97+%E8%B0%88%E8%96%AA+%E6%8A%80%E5%B7%A7\"}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T12:19:46.605Z"
+    },
+    {
+      "id": "message_71c9043b-ec23-4a9c-ab8d-58db55b368d8",
+      "role": "tool",
+      "content": "Fetched page: https://www.zhihu.com/search?type=content&q=%E7%AE%97%E6%B3%95%E5%B2%97+%E8%B0%88%E8%96%AA+%E6%8A%80%E5%B7%A7\nReadable text:\n知乎，让每一次点击都充满意义 —— 欢迎来到知乎，发现问题背后的世界。",
+      "tool_call_id": "call_00_lx0Cj3QkFSuna2jY30sk7899",
+      "toolName": "fetch_url",
+      "createdAt": "2026-06-08T12:19:46.659Z"
+    },
+    {
+      "id": "message_6b5215e7-a86e-400e-b4c0-3a288646a576",
+      "role": "assistant",
+      "content": "没关系，虽然在线搜索结果受限，但关于这个话题我有足够的知识积累。下面是一份**全面的实操指南**👇\n\n---\n\n# 🔥 互联网算法岗 & HR 谈薪全攻略\n\n## 一、先搞清楚「总包」的构成\n\n算法岗的薪资不是单一的月薪，而是 **「总包（Total Package）」**，通常包括：\n\n| 组成部分 | 说明 | 谈判空间 |\n|---------|------|---------|\n| **基本月薪** | 每月固定工资 | ✅ 核心谈判项 |\n| **年终奖** | 通常 12-16 薪，大厂常见 14-16 薪 | ✅ 可确认保底 |\n| **股票/期权（RSU）** | 分 4 年归属，每年 25% 解锁 | ✅ 核心谈判项 |\n| **签字费（Sign-on Bonus）** | 入职一次性发放，1-3 个月工资 | ✅ 可争取 |\n| **安家费/搬家补贴** | 异地入职可谈 | ✅ 可争取 |\n| **房补/餐补/交通补** | 每月固定补贴 | ⚠️ 通常固定 |\n\n> 💡 **公式：总包 = 月薪 × 月数 + 股票年归属价值 + 签字费（一次性）**\n\n---\n\n## 二、谈薪前必做的 4 步准备\n\n### 1️⃣ 摸清市场行情\n- 在 **脉脉、OfferShow、牛客网** 搜索同级别、同方向（CV/NLP/搜推广等）的 offer 数据\n- 根据你的 **学历（985/海归/双非）**、**年限（校招/1-3年/3-5年）**、**公司级别（T4/T5/P6/P7 等）** 定锚点\n- 大厂算法岗参考区间（2024-2025）：\n  - 🎓 校招 SSP：45-60w 总包\n  - 🎓 校招 SP：35-45w 总包\n  - 🎓 校招普通：28-35w 总包\n  - 💼 社招 L5/P7 级：80-150w+ 总包\n\n### 2️⃣ 准备好你的「筹码清单」\n谈判前想清楚你的**议价资本**：\n- 手上有几个 offer？有无竞品公司 offer？\n- 有没有顶会论文（NeurIPS/CVPR/ICML）？\n- 有没有竞赛（Kaggle/KDD Cup）成绩？\n- 之前的业绩亮点（AUC 提升、CTR 提升、业务增长）\n\n### 3️⃣ 了解对方的预算范围\nHR 手上通常有一个 **薪资范围（band）**：\n- **下限**：HR 希望你接受的价\n- **中位数**：匹配你能力的价\n- **上限**：需要特批的价\n- ⚡ 有竞品 offer 可以直接逼到上限甚至超出\n\n### 4️⃣ 确定你的「底线」和「目标」\n- **底线价**：低于这个就不去了\n- **满意价**：拿到就开心的数字\n- **理想价**：需要使劲争取的\n\n---\n\n## 三、与 HR 谈判的实战技巧\n\n### 🎯 技巧 1：永远不要先报价\n- ❌ **错误示范**：\"我的期望薪资是 35k\"\n- ✅ **正确做法**：\"我了解这个级别在贵司大概是 xx 到 yy 的范围，但我也想知道您这边能给我的定级和薪资范围\"\n- HR 先出价的一方往往处于劣势\n\n### 🎯 技巧 2：用竞品 offer 逼价\n这是算法岗最有用的谈判武器：\n> \"我目前手上还有 xx 公司的 offer，他们给了 A 级的总包约 X 万。但我更倾向贵司的业务方向，如果贵司能给到接近的水平（约 Y 万），我可以很快做决定。\"\n\n### 🎯 技巧 3：把焦点放在「总包」而非月薪\n- 月薪有固定上限（公司薪酬带宽），但**股票+签字费**弹性更大\n- 话术示例：\"月薪我理解贵司有体系，那能否在签字费或股票上做一些补偿？\"\n\n### 🎯 技巧 4：强调你的「唯一性」\n算法岗**人才稀缺**，强调你的独特价值：\n- \"我发表的 xxx 论文方向与贵司业务高度匹配\"\n- \"我之前做的 xxx 项目直接带来了 YY% 的业务提升\"\n- \"我对这个方向有 deep insight，上手速度会比一般候选人快很多\"\n\n### 🎯 技巧 5：利用「时间差」制造压力\n- \"另一家公司的 offer 截止日期是这周五，我很希望能优先考虑贵司\"\n- 给 HR 一个合理的 deadline，倒逼对方走审批流程\n\n### 🎯 技巧 6：不要只盯钱，关注「非薪资项」\n如果薪资实在谈不动了，可以谈：\n- **股票加速归属**（比如改为 3 年归属）\n- **更大签字费**\n- **入职时间灵活**\n- **假期/培训资源**\n- **级别上调**（同一薪资升级别，下次跳槽有利）\n\n---\n\n## 四、HR 常用「压价套路」及拆招\n\n| 套路 | HR 怎么说 | 你怎么回 |\n|------|----------|---------|\n| **「薪资倒挂」** | \"这个薪资已经比老员工高了\" | \"市场行情在变化，我的能力值这个价，老员工的股票也增值了\" |\n| **「我们有培养体系」** | \"我们这边能学到很多\" | \"我认可成长空间，但薪资也是我个人价值的体现，希望两者兼得\" |\n| **「我们预算就这么多」** | \"这已经是最高了\" | \"能否帮我问问是否有特批通道？或者能否在签字费/股票上灵活处理？\" |\n| **「你经验还不够」** | \"这个薪资对新人来说很好了\" | \"我的项目产出可以证明我有 senior 级别的产出能力\" |\n| **「我们福利很好」** | \"加上福利其实不止这个数\" | \"福利我了解，但希望能实打实地体现在总包里\" |\n\n---\n\n## 五、算法岗特有的加分筹码\n\n算法岗和普通开发不同，以下筹码在谈薪时特别有用：\n\n1. **顶会论文** 🔬 — NeurIPS/CVPR/ICML/ICLR → 可直接加薪 5-15w\n2. **高引工作** 📈 — 说明影响力\n3. **开源贡献** 🐙 — GitHub star 高的项目\n4. **竞赛排名** 🏆 — Kaggle Grandmaster / 天池冠军\n5. **业务落地经验** 🚀 — 模型上线、AB实验、业务指标提升\n6. **特定方向稀缺性** — 大模型/多模态/RLHF 等热门方向溢价更高\n\n---\n\n## 六、最后提醒：避坑清单\n\n| 序号 | ❌ 不要做 | ✅ 应该做 |\n|------|---------|---------|\n| 1 | 刚到 offer 就立刻接受 | 至少争取 1-2 轮谈判 |\n| 2 | 编造虚假 offer 逼价 | 如果被背调发现会很被动 |\n| 3 | 态度过于强硬或威胁 | 保持专业、尊重、合作的态度 |\n| 4 | 只看月薪不看总包 | 用 Excel 拉一个总包对比表 |\n| 5 | 忽略股票估值风险 | 未上市公司的期权要打折扣评估 |\n| 6 | 拖延太久不回复 | 合理时效内回复，避免 offer 被撤回 |\n\n---\n\n**总结一句话：** 算法岗的薪资谈判，核心是**用好信息差 + 合理展示筹码 + 关注总包而非单项**。HR 不是你的敌人，TA 的任务是招到人，你的任务是让 TA 知道**招你最划算**。\n\n如果你有具体的 offer 情况（公司、级别、方向、当前报价），我可以帮你具体分析怎么谈！💪",
+      "createdAt": "2026-06-08T12:20:09.108Z"
+    },
+    {
+      "id": "message_f10b2206-1881-4eb9-9a7d-785652637300",
+      "role": "user",
+      "content": "涨薪幅度一般在多少？",
+      "attachments": [],
+      "createdAt": "2026-06-08T13:34:36.148Z"
+    },
+    {
+      "id": "message_6ec1dddf-2bb2-42de-af3b-aa0136285de0",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_C5b23Z0zeQHIK1j6Ej0k4836",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"num\": 8, \"query\": \"互联网大厂 跳槽涨薪幅度 2024 2025 算法工程师\"}"
+          }
+        },
+        {
+          "index": 1,
+          "id": "call_01_Ct9C01n8x5qHTRxv3OZ18777",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"num\": 8, \"query\": \"程序员跳槽涨薪幅度标准 30% 50% 互联网\"}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T13:34:39.157Z"
+    },
+    {
+      "id": "message_eb26d9b2-dd99-4d0c-8912-6429bf639eef",
+      "role": "tool",
+      "content": "1. 超级互联 - Smart Connect - Windows官方下载 | 微软应用 ...\nURL: https://apps.microsoft.com/detail/xp8jrf5sxv03zm?hl=zh-cn&gl=cn\nDescription: 超级互联能够以前所未有的方式将您的个人生态系统连接在一起。 专为流畅多任务操作与设备控制而设计。 无论是应用跨屏，搜索文件，还是管理内容，超级互联都可以简化您与您的设备互动的方式。\nEngine: bing\n\n2. O+ Connect\nURL: https://connect.oppo.com/\nDescription: 2026年5月27日 · O+ Connect is an official app designed for cross-device collaboration between OPPO/OnePlus/realme phone or tablet and your PC. Enjoy seamless file transfer and remote …\nEngine: bing\n\n3. 互联_百度百科\nURL: https://baike.baidu.com/item/%E4%BA%92%E8%81%94/3827205\nDescription: 互联（interconnection/interconnect）是指物理网络间通过物理连接线路建立的连接，需确保通信协议兼容以实现跨网络通信及资源共享。 其实现依赖路由器、网关等设备，形成覆盖更广的互联系统，国 …\nEngine: bing\n\n4. 网易UU远程官网_真4K、真免费、真好用\nURL: http://uuyc.163.com/\nDescription: 5 天之前 · 高清高帧，无损还原 PC 画质 游戏云键盘，百款方案省心秒用 适配多款游戏手柄，即插即用 查看更多 远程协助 免费实用 远程协助易上手 安全可控，一键禁止远程协助 跨端互联，PC/手机跨设 …\nEngine: bing\n\n5. ‎OPPO 互联 App - App Store\nURL: https://apps.apple.com/cn/app/oppo-%E4%BA%92%E8%81%94/id6504797905\nDescription: 2025年2月25日 · 在 App Store 下载“Guangdong Heytap Technology Corp., Ltd.”的“OPPO 互联”。 查看截屏、评分及评论、用户提示以及更多类似“OPPO 互联”的 App。\nEngine: bing\n\n6. 1995-2025：中国互联网三十年发展全事件解析\nURL: https://zhuanlan.zhihu.com/p/20488595055\nDescription: 1995-2025：中国互联网三十年发展全事件解析 （完整版：含区块链技术演进与AI基础关联） 第一阶段：破土萌芽（1995-2000） 关键事件与影响1994年4月：中国全功能接入国际互联网简述：通过中关 …\nEngine: bing\n\n7. AI 开发者管理平台 - QQ互联\nURL: https://connect.qq.com/\nDescription: 2026年4月28日 · 开放QQ能力，实现高效社交推广 为开发者提供AI互联、移动应用、网站应用三大核心能力，助力产品快速触达亿级用户\nEngine: bing\n\n8. 超算互联网\nURL: https://www.scnet.cn/home/internet/index.html\nDescription: 2024.4 国家超算互联网平台正式上线，互联互通全国14个省区市20+超算智算中心；召开首届“超算互联网峰会”，发布《超算互联网白皮书》 2024.10 承担国家数据局“全国一体化算力网算力监测调度先行 …\nEngine: bing",
+      "tool_call_id": "call_00_C5b23Z0zeQHIK1j6Ej0k4836",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T13:34:40.279Z"
+    },
+    {
+      "id": "message_52ccd233-f27b-465d-8d8c-1f9ba7a05580",
+      "role": "tool",
+      "content": "1. 程序（计算机程序）_百度百科\nURL: https://baike.baidu.com/item/%E7%A8%8B%E5%BA%8F/13831935\nDescription: 计算机程序（Computer Program），港、台译做电脑程式。 计算机程序是一组计算机能识别和执行的指令，运行于电子计算机上，满足人们某种需求的信息化工具。 它以某些程序设计语言编写，运行于 …\nEngine: bing\n\n2. CSDN_专业开发者社区\nURL: https://www.csdn.net/\nDescription: 2026年5月25日 · 首先介绍了目标文件 (.o)作为ELF格式的基本单元，其通过静态链接合并为可执行程序的过程。 重点剖析了ELF文件结构，包括Section合并为Segment的优化策略，以及操作系统如何根 …\nEngine: bing\n\n3. 菜鸟教程\nURL: https://www.runoob.com/\nDescription: Python 数据分析与可视化 Web 框架。 【学习 Jupyter Notebook】 交互式数据分析与计算工具。 【学习 Pillow】 Python 图像处理库。 【量化交易】 利用程序化策略进行金融交易。 【学习 R】 用于统计 …\nEngine: bing\n\n4. 电脑极简科普13：什么是程序？什么是软件？什么是代码 ...\nURL: https://zhuanlan.zhihu.com/p/1890010832223597775\nDescription: 2025年3月31日 · 一、程序和软件首先要理解，电脑可以实现这么多的功能，又能唱歌（播放音乐）、又能上网聊天、又能打游戏......其实，电脑不知道它在干啥。 它只是按照人类的预先设定，在我们执行 …\nEngine: bing\n\n5. 程序（汉语词语）_百度百科\nURL: https://baike.baidu.com/item/%E7%A8%8B%E5%BA%8F/16176789\nDescription: 释义事情进行的先后，指“会议”等庄重场合的安排。 [3] “程序”作为汉语词语，基本含义广泛，泛指事情进行或事物发展的次序、步骤或方法。 [3] [例句]制定程序。 （作宾语）程序是这样安排的。 （作主 …\nEngine: bing\n\n6. 微信小程序\nURL: https://mp.weixin.qq.com/cgi-bin/wx\nDescription: 2025年8月8日 · 小程序是一种新的开放能力，可以在微信内被便捷地获取和传播，同时具有出色的使用体验。 小程序开发者可在小程序内提供便捷、丰富的服务，如预订、商品购买、游戏、信息查询等。\nEngine: bing\n\n7. 程序 _ 百科\nURL: https://baike.sogou.com/v66045.htm\nDescription: 为实现预期目的而进行操作的一系列语句和指令。 一般分为系统程序和应用程序两大类。 计算机中的程序在港澳台地区称为程式。 程序就是为使电子计算机执行一个或多个操作，或执行某一任务，按序 …\nEngine: bing\n\n8. 欢迎来到 Python.org - Python 编程语言\nURL: https://pythonlang.cn/\nDescription: 2026年2月4日 · >>> Python 软件基金会 Python 软件基金会的使命是推广、保护和推进 Python 编程语言，并支持和促进多元化和国际化的 Python 程序员社区的发展。 了解更多 成为会员 向 PSF 捐款\nEngine: bing",
+      "tool_call_id": "call_01_Ct9C01n8x5qHTRxv3OZ18777",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T13:34:40.755Z"
+    },
+    {
+      "id": "message_c47c2c6d-b940-4215-aad1-2943534fa53f",
+      "role": "assistant",
+      "content": "虽然搜索结果有限，但结合我掌握的信息，下面给你一份详细的涨薪幅度参考👇\n\n---\n\n# 📈 互联网算法岗涨薪幅度全解析\n\n## 一、不同场景的涨薪幅度\n\n### 🚀 跳槽涨薪（最常见）\n\n| 级别 | 普通水平 | 理想水平 | 天花板（有竞品offer） |\n|------|---------|---------|-------------------|\n| **校招→社招（1-3年）** | 20-30% | 30-50% | 50-80% |\n| **社招（3-5年）** | 15-25% | 25-40% | 40-60% |\n| **高级/专家（5年+）** | 10-20% | 20-35% | 35-50% |\n| **阿里P7+/字节3-2+** | 10-15% | 15-30% | 30-40% |\n\n> **2024-2025年市场的实况**：整体不如前几年火热，大厂算法岗跳槽涨薪**通常落在 20-35%** 区间，优秀者可到 40-50%。能超过 50% 的案例多发生在：\n> - 基层跳中层（如 P6→P7 跨级跳）\n> - 小厂跳大厂且手上有多个竞品 offer\n> - 超级热门方向（大模型/多模态/AIGC）人才\n\n### 📊 内部晋升涨薪\n\n| 晋升类型 | 涨薪幅度 |\n|---------|---------|\n| **普通晋升（如 P5→P6, 2-1→2-2）** | 15-25%（含股票调整） |\n| **破格/跨级晋升** | 25-40% |\n| **普调（年度涨薪）** | 3-10%（通常 5-8%） |\n| **普调+晋升叠加** | 20-35% |\n\n> ⚠️ **内部晋升的痛点**：涨幅通常低于跳槽。这也是互联网行业「跳槽涨薪 > 晋升涨薪」的普遍现象。所以在互联网圈有个潜规则：**想大涨幅，每 2-3 年跳一次**。\n\n### 💰 平级跳 vs 升级跳\n\n| 类型 | 含义 | 涨薪幅度 | 难度 |\n|------|-----|---------|------|\n| **平级跳** | 同级（如 P6→P6） | 15-30% | 相对容易 |\n| **升级跳** | 升一级（如 P6→P7） | 30-60% | 需要面试表现突出 |\n| **跨级跳** | 升两级 | 50-100% | 极少见，需非常优秀 |\n\n---\n\n## 二、算法岗 vs 普通开发的涨薪差异\n\n| 维度 | 算法岗 | 普通开发 |\n|------|-------|---------|\n| **跳槽平均涨幅** | 25-40% | 15-30% |\n| **稀缺方向溢价** | +10-20%（大模型/搜推广/NLP） | +5-10% |\n| **顶会论文加成** | 可多谈 5-15w 年薪 | 通常无此加成 |\n| **校招SSP vs 普通** | 差距可达 20-30w/年 | 差距 10-15w/年 |\n\n---\n\n## 三、影响涨薪幅度的关键因素\n\n### 🔑 决定性因素（权重从高到低）\n\n1. **当前薪资基数** 📌\n   - 基数越高，百分比涨幅越难谈\n   - 30k→45k（+50%）比 50k→75k（+50%）容易得多\n   - 常见现象：**薪资越高，涨幅越低**\n\n2. **竞品 offer 数量** 🏆\n   - 0 个竞品：涨幅 10-20%\n   - 1 个竞品：涨幅 20-35%\n   - 2+ 个竞品：涨幅 30-50%\n   - 字节/阿里/腾讯互相竞价时，可以逼到 40-60%\n\n3. **方向稀缺度** 🔥\n   - 大模型/LLM 训练：溢价最高，+20-30%\n   - 搜推广/推荐系统：稳定需求，+15-25%\n   - CV/NLP 基础方向：+10-20%\n   - 数据挖掘/BI 方向：+10-15%\n\n4. **公司类型组合**\n   | 从 → 到 | 典型涨幅 |\n   |---------|---------|\n   | 小厂→大厂 | 30-50% |\n   | 大厂→大厂 | 15-30% |\n   | 大厂→小厂（带团队） | 20-40%（+股票/期权） |\n   | 外企→互联网大厂 | 30-60% |\n\n---\n\n## 四、各细分方向的具体市场行情\n\n### 🤖 大模型/AIGC 方向（2024-2025 最热）\n\n| 经验 | 跳槽涨幅参考 |\n|------|------------|\n| 校招（有相关项目） | 40-80%（SSP 居多） |\n| 1-3 年经验 | 30-50% |\n| 3-5 年经验 | 25-40% |\n\n> 💡 大模型方向现在极度缺人，**有预训练/RLHF/SFT 实战经验**的候选人，涨幅下限即可到 30%\n\n### 🔍 搜推广（搜索/推荐/广告）\n\n| 经验 | 跳槽涨幅参考 |\n|------|------------|\n| 校招 | 25-40% |\n| 1-3 年 | 20-35% |\n| 3-5 年 | 15-30% |\n\n### 👁️ CV / 🗣️ NLP（传统方向）\n\n| 经验 | 跳槽涨幅参考 |\n|------|------------|\n| 校招 | 15-30% |\n| 1-3 年 | 15-25% |\n| 3-5 年 | 10-20% |\n\n---\n\n## 五、涨薪谈判实操：怎么谈出上限\n\n### ✅ 谈高涨幅的 4 个话术策略\n\n**策略 1：用总包比较法**\n> \"我现在总包是 X 万（月薪×月数+股票），按 30% 涨幅是 Y 万。但我希望总包能到 Z 万，因为……\"\n\n**策略 2：亮出稀缺性**\n> \"我在大模型（填具体方向）方向有 xx 经验，这个方向的候选人在市场上比较稀缺。我也面了其他几家，反馈都很好。\"\n\n**策略 3：强调短期产出**\n> \"我上手很快，入职第一个月就能独立推进项目，不需要很长的 ramp-up 周期。\"\n\n**策略 4：让 HR 帮你算总账**\n> \"如果月薪实在有硬性限制，能不能在签字费/股票/年终保障上多给一些？这样总包也能接近我的预期。\"\n\n---\n\n## 六、行业趋势对涨薪的影响\n\n| 年度 | 市场热度 | 算法岗平均跳槽涨幅 |\n|------|---------|-----------------|\n| 2021-2022（高峰） | 🔥🔥🔥🔥🔥 | 30-50% |\n| 2023（回调） | 🔥🔥🔥 | 20-35% |\n| 2024（复苏） | 🔥🔥🔥🔥 | 20-40% |\n| 2025（结构化分化） | 🔥🔥🔥（局部热） | 15-40%（因方向而异） |\n\n> 📌 **当下趋势总结**：\n> - 大模型/AIGC 方向一枝独秀，涨幅明显高于其他方向\n> - 传统算法方向（CV/NLP 非大模型）竞争加剧，涨幅承压\n> - **攒 offer 比价**依然是获取高涨幅的最有效手段\n\n---\n\n**一句话总结：** 算法岗跳槽涨薪的**基准线是 20-30%**，达到 **30-40%** 算优秀，突破 **50%** 需要天时地利人和（热门方向+竞品 offer+面试表现突出）。如果低于 15%，建议认真考虑是否值得跳。",
+      "createdAt": "2026-06-08T13:35:03.408Z"
+    }
+  ]
+}

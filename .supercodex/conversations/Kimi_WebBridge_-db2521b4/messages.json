@@ -1,0 +1,47 @@
+{
+  "id": "conversation_db2521b4-1dc2-4e54-b94f-8178873f7f03",
+  "projectId": "project_7f99b965-a74f-418d-b486-fa1ce6e41d2a",
+  "title": "检查 Kimi WebBridge 状态，并...",
+  "shortcut": "⌘9",
+  "updatedAt": "2026-06-05T09:13:17.623Z",
+  "summary": "本次对话围绕“检查 Kimi WebBridge 状态，并告诉我是否能控制真实浏览器。”展开。\n最近一次助手回复摘要：## Kimi WebBridge 状态报告\n\n| 项目 | 状态 |\n|------|------|\n| 🟢 WebBridge 守护进程 | **运行中**（已运行约 7.3 小时，版本 v1.9.16） |\n| 🔴 浏览器扩展 | **未连接** |\n\n### 能否控制真实浏览器？ ❌ **暂不能**\n\n守护进程虽然运行正常（端口 `10086`）",
+  "messages": [
+    {
+      "id": "message_c3da07d3-0625-410b-8152-487816072eba",
+      "role": "user",
+      "content": "检查 Kimi WebBridge 状态，并告诉我是否能控制真实浏览器。",
+      "createdAt": "2026-06-05T09:13:11.423Z"
+    },
+    {
+      "id": "message_10309aac-02fe-4e1d-8f0f-a0e9ed8c89bf",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_L5HVyQyXt8njGUUJ8bUh8699",
+          "type": "function",
+          "function": {
+            "name": "webbridge_status",
+            "arguments": "{}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-05T09:13:12.872Z"
+    },
+    {
+      "id": "message_e755009b-5188-417d-943b-986c246ab11f",
+      "role": "tool",
+      "content": "{\"extension_connected\":false,\"extension_id\":\"\",\"extension_version\":\"\",\"port\":10086,\"running\":true,\"uptime_seconds\":26376,\"version\":\"v1.9.16\"}",
+      "tool_call_id": "call_00_L5HVyQyXt8njGUUJ8bUh8699",
+      "toolName": "webbridge_status",
+      "createdAt": "2026-06-05T09:13:12.902Z"
+    },
+    {
+      "id": "message_d55cc9ee-7398-4e2e-8de8-05f47cd3a788",
+      "role": "assistant",
+      "content": "## Kimi WebBridge 状态报告\n\n| 项目 | 状态 |\n|------|------|\n| 🟢 WebBridge 守护进程 | **运行中**（已运行约 7.3 小时，版本 v1.9.16） |\n| 🔴 浏览器扩展 | **未连接** |\n\n### 能否控制真实浏览器？ ❌ **暂不能**\n\n守护进程虽然运行正常（端口 `10086`），但**浏览器扩展尚未连接**，因此目前无法控制真实浏览器。\n\n### 如需启用，请按以下步骤操作：\n\n1. **安装浏览器扩展**：在 Chrome/Edge 等浏览器中安装 Kimi WebBridge 扩展（可从官方渠道获取）。\n2. **连接扩展**：安装后点击扩展图标，确保其连接到本地的 WebBridge 守护进程（默认端口 `10086`）。\n3. 连接成功后，我就可以帮你执行浏览器操作（如网页导航、截图、获取页面内容等）。\n\n需要我帮你进一步排查或进行其他操作吗？",
+      "createdAt": "2026-06-05T09:13:17.623Z"
+    }
+  ]
+}

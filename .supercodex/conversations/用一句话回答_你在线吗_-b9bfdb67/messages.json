@@ -1,0 +1,23 @@
+{
+  "id": "conversation_b9bfdb67-1fd3-4ed7-bb54-0c202c70d7b3",
+  "projectId": "project_7f99b965-a74f-418d-b486-fa1ce6e41d2a",
+  "title": "用一句话回答：你在线吗？",
+  "shortcut": "⌘9",
+  "updatedAt": "2026-06-07T06:29:46.611Z",
+  "summary": "本次对话围绕“用一句话回答：你在线吗？”展开。\n最近一次助手回复摘要：在线，有什么需要处理的办公任务请说。",
+  "messages": [
+    {
+      "id": "message_a03ef6a4-6693-464e-a614-e3ac5b5b8c78",
+      "role": "user",
+      "content": "用一句话回答：你在线吗？",
+      "attachments": [],
+      "createdAt": "2026-06-07T06:29:45.302Z"
+    },
+    {
+      "id": "message_f1cee0ad-9775-44c5-8f90-c5ba4a5de544",
+      "role": "assistant",
+      "content": "在线，有什么需要处理的办公任务请说。",
+      "createdAt": "2026-06-07T06:29:46.611Z"
+    }
+  ]
+}

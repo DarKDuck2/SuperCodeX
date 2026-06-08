@@ -101,11 +101,41 @@ type AppState = {
     id: string;
     title: string;
     schedule: string;
+    prompt: string;
     enabled: boolean;
+    nextRunAt?: string;
+    lastRunAt?: string;
+    lastStatus?: "never" | "running" | "success" | "error";
+    lastResult?: string;
+    lastError?: string;
+    lastDocumentAttachmentId?: string;
+    lastDocumentName?: string;
+    runCount?: number;
+    conversationId?: string;
+    unreadCount?: number;
+    runs?: AutomationRun[];
   }>;
 };
 
 type Automation = AppState["automations"][number];
+type AutomationRun = {
+  id: string;
+  trigger: "schedule" | "manual";
+  startedAt: string;
+  finishedAt?: string;
+  status: "running" | "success" | "error";
+  result?: string;
+  error?: string;
+  documentAttachmentId?: string;
+  documentName?: string;
+  unread?: boolean;
+};
+type AutomationPreview = {
+  title: string;
+  schedule: string;
+  prompt: string;
+  nextRunAt?: string;
+};
 type SearchResult = {
   id: string;
   title: string;
@@ -146,6 +176,7 @@ type Attachment = {
   mimeType: string;
   size: number;
   kind: "image" | "text" | "file";
+  source?: "upload" | "artifact";
   createdAt: string;
   url: string;
   derivedFrom?: string;
@@ -183,7 +214,6 @@ function App() {
   const [isWorking, setIsWorking] = useState(false);
   const [isBooting, setIsBooting] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
-  const [permission, setPermission] = useState("全部允许");
   const [mode, setMode] = useState<"agent" | "team">("agent");
   const [activeView, setActiveView] = useState<"home" | "skills" | "automations" | "search" | "webbridge">("home");
   const [appError, setAppError] = useState("");
@@ -197,6 +227,13 @@ function App() {
   const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [selectedAutomationId, setSelectedAutomationId] = useState("");
+  const [showAutomationDialog, setShowAutomationDialog] = useState(false);
+  const [automationInstruction, setAutomationInstruction] = useState("");
+  const [automationPreview, setAutomationPreview] = useState<AutomationPreview | null>(null);
+  const [isEditingAutomation, setIsEditingAutomation] = useState(false);
+  const [automationDraft, setAutomationDraft] = useState({ title: "", schedule: "", prompt: "" });
+  const activeRequestRef = useRef<AbortController | null>(null);
   const messageStackRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -234,10 +271,44 @@ function App() {
   );
   const visibleProjectTree = useMemo(() => flattenProjectTree(projectTree).slice(0, 10), [projectTree]);
   const artifacts = useMemo(() => extractArtifacts(messages), [messages]);
+  const selectedAutomation = useMemo(
+    () =>
+      automations.find((automation) => automation.id === selectedAutomationId) ??
+      automations[0] ??
+      null,
+    [automations, selectedAutomationId]
+  );
+  const unreadAutomationCount = useMemo(
+    () => automations.reduce((total, automation) => total + (automation.unreadCount || 0), 0),
+    [automations]
+  );
 
   useEffect(() => {
     loadAppState();
   }, []);
+
+  useEffect(() => {
+    if (activeView !== "automations") return;
+    const timer = window.setInterval(() => {
+      void syncAppState();
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [activeView]);
+
+  useEffect(() => {
+    if (!showAutomationDialog || !automationInstruction.trim()) {
+      setAutomationPreview(null);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void previewAutomation(automationInstruction, controller.signal);
+    }, 250);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [automationInstruction, showAutomationDialog]);
 
   useEffect(() => {
     messageStackRef.current?.scrollTo({
@@ -379,6 +450,8 @@ function App() {
       }
     ]);
     setIsWorking(true);
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
 
     try {
       const response = await fetch(`/api/conversations/${conversationId}/messages`, {
@@ -389,7 +462,8 @@ function App() {
           content: prompt || "请处理这些附件。",
           attachmentIds: pendingAttachments.map((attachment) => attachment.id),
           stream: true
-        })
+        }),
+        signal: controller.signal
       });
       if (!response.ok || !response.body) {
         const payload = await response.json().catch(() => ({ error: "请求失败" }));
@@ -399,14 +473,16 @@ function App() {
       await syncAppState();
       setActiveConversationId(conversationId);
     } catch (error) {
+      const stopped = error instanceof DOMException && error.name === "AbortError";
       setMessages((current) =>
         current.map((message) =>
           message.id === pendingId
             ? {
                 ...message,
-                status: "error",
-                content:
-                  error instanceof Error
+                status: stopped ? "done" : "error",
+                content: stopped
+                  ? "已停止本次回答。"
+                  : error instanceof Error
                     ? `调用失败：${error.message}`
                     : "调用失败：未知错误"
               }
@@ -414,8 +490,13 @@ function App() {
         )
       );
     } finally {
+      if (activeRequestRef.current === controller) activeRequestRef.current = null;
       setIsWorking(false);
     }
+  }
+
+  function stopAgentRun() {
+    activeRequestRef.current?.abort();
   }
 
   async function readAgentStream(response: Response, pendingId: string) {
@@ -494,14 +575,38 @@ function App() {
     useSkillPrompt(title);
   }
 
-  async function createAutomation() {
-    const title = input.trim() || "跟进当前任务";
-    await fetch("/api/automations", {
+  function createAutomation() {
+    setAutomationInstruction(input.trim());
+    setShowAutomationDialog(true);
+  }
+
+  async function previewAutomation(instruction: string, signal?: AbortSignal) {
+    const response = await fetch("/api/automations/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, schedule: "每天 09:00" })
+      body: JSON.stringify({ instruction }),
+      signal
     });
-    setInput(`创建一个每天 09:00 自动执行的任务：${title}`);
+    if (!response.ok) return;
+    const payload = (await response.json()) as { preview: AutomationPreview };
+    setAutomationPreview(payload.preview);
+  }
+
+  async function submitAutomation(event: FormEvent) {
+    event.preventDefault();
+    const instruction = automationInstruction.trim();
+    if (!instruction) return;
+    const response = await fetch("/api/automations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ instruction })
+    });
+    const payload = (await response.json()) as { automation?: Automation; error?: string };
+    if (!response.ok || !payload.automation) throw new Error(payload.error || "创建自动化失败");
+    setInput("");
+    setAutomationInstruction("");
+    setShowAutomationDialog(false);
+    setSelectedAutomationId(payload.automation.id);
     await syncAppState();
     setActiveView("automations");
   }
@@ -516,9 +621,46 @@ function App() {
     await syncAppState();
   }
 
+  function startEditAutomation(automation: Automation) {
+    setAutomationDraft({
+      title: automation.title,
+      schedule: automation.schedule,
+      prompt: automation.prompt
+    });
+    setIsEditingAutomation(true);
+  }
+
+  async function saveAutomationEdit() {
+    if (!selectedAutomation) return;
+    const response = await fetch(`/api/automations/${selectedAutomation.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(automationDraft)
+    });
+    if (!response.ok) throw new Error("更新自动化失败");
+    setIsEditingAutomation(false);
+    await syncAppState();
+  }
+
+  async function runAutomationNow(automation: Automation) {
+    const response = await fetch(`/api/automations/${automation.id}/run`, { method: "POST" });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({ error: "立即运行失败" }));
+      throw new Error(payload.error || "立即运行失败");
+    }
+    await syncAppState();
+  }
+
+  async function markAutomationRead(automation: Automation) {
+    if (!automation.unreadCount) return;
+    await fetch(`/api/automations/${automation.id}/read`, { method: "POST" });
+    await syncAppState();
+  }
+
   async function deleteAutomation(id: string) {
     const response = await fetch(`/api/automations/${id}`, { method: "DELETE" });
     if (!response.ok && response.status !== 204) throw new Error("删除自动化失败");
+    setSelectedAutomationId((current) => (current === id ? "" : current));
     await syncAppState();
   }
 
@@ -675,6 +817,7 @@ function App() {
           >
             <AlarmClock size={19} />
             <span className="navText">定时任务</span>
+            {unreadAutomationCount > 0 && <span className="navBadge">{unreadAutomationCount}</span>}
           </button>
           <button
             className={`navButton ${activeView === "webbridge" ? "active" : ""}`}
@@ -858,28 +1001,216 @@ function App() {
             )}
 
             {activeView === "automations" && (
-              <section className="utilityPanel">
-                <div className="utilityList">
-                  {automations.length === 0 ? (
-                    <p className="emptyText">还没有定时任务。可以在输入框写下任务后点击“创建自动化”。</p>
-                  ) : (
-                    automations.map((automation) => (
-                      <div className="utilityRow automationRow" key={automation.id}>
-                        <Workflow size={17} />
-                        <span>
-                          <strong>{automation.title}</strong>
-                          <small>{automation.schedule}</small>
-                        </span>
-                        <button type="button" onClick={() => toggleAutomation(automation)}>
-                          {automation.enabled ? "停用" : "启用"}
-                        </button>
-                        <button type="button" title="删除" onClick={() => deleteAutomation(automation.id)}>
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    ))
-                  )}
+              <section className="automationWorkspace">
+                <div className="automationToolbar">
+                  <button className="primaryAction" type="button" onClick={createAutomation}>
+                    <Plus size={17} />
+                    创建自动化
+                  </button>
                 </div>
+                {automations.length === 0 ? (
+                  <section className="utilityPanel">
+                    <p className="emptyText">
+                      还没有定时任务。点击“创建自动化”，输入“每天早上9点返回新闻”“11:30返回早盘情况”“每2h提醒喝水和休息”即可创建。
+                    </p>
+                  </section>
+                ) : (
+                  <div className="automationLayout">
+                    <section className="utilityPanel automationListPanel">
+                      <div className="utilityList">
+                        {automations.map((automation) => (
+                          <button
+                            className={`utilityRow automationRow ${
+                              selectedAutomation?.id === automation.id ? "active" : ""
+                            }`}
+                            type="button"
+                            key={automation.id}
+                            onClick={() => {
+                              setSelectedAutomationId(automation.id);
+                              setIsEditingAutomation(false);
+                              void markAutomationRead(automation);
+                            }}
+                          >
+                            <Workflow size={17} />
+                            <span>
+                              <strong>
+                                {automation.title}
+                                {(automation.unreadCount || 0) > 0 && (
+                                  <em className="inlineBadge">{automation.unreadCount}</em>
+                                )}
+                              </strong>
+                              <small>
+                                {automation.schedule}
+                                {automation.nextRunAt ? ` · 下次 ${formatDateTime(automation.nextRunAt)}` : ""}
+                              </small>
+                              <small className={`automationStatus ${automation.lastStatus || "never"}`}>
+                                {formatAutomationStatus(automation)}
+                              </small>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+
+                    {selectedAutomation && (
+                      <section className="automationDetail">
+                        <div className="detailHeader">
+                          <span className="detailIcon">
+                            <Workflow size={18} />
+                          </span>
+                          <div>
+                            <strong>{selectedAutomation.title}</strong>
+                            <small>{selectedAutomation.enabled ? "运行中" : "已停用"}</small>
+                          </div>
+                        </div>
+                        {isEditingAutomation ? (
+                          <div className="detailEditor">
+                            <label>
+                              <span>标题</span>
+                              <input
+                                value={automationDraft.title}
+                                onChange={(event) =>
+                                  setAutomationDraft((draft) => ({ ...draft, title: event.target.value }))
+                                }
+                              />
+                            </label>
+                            <label>
+                              <span>时间规则</span>
+                              <input
+                                value={automationDraft.schedule}
+                                onChange={(event) =>
+                                  setAutomationDraft((draft) => ({ ...draft, schedule: event.target.value }))
+                                }
+                              />
+                            </label>
+                            <label>
+                              <span>任务内容</span>
+                              <textarea
+                                value={automationDraft.prompt}
+                                onChange={(event) =>
+                                  setAutomationDraft((draft) => ({ ...draft, prompt: event.target.value }))
+                                }
+                                rows={4}
+                              />
+                            </label>
+                            <div className="detailActions">
+                              <button className="primaryAction" type="button" onClick={saveAutomationEdit}>
+                                保存修改
+                              </button>
+                              <button type="button" onClick={() => setIsEditingAutomation(false)}>
+                                取消
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <dl className="detailGrid">
+                              <div>
+                                <dt>时间规则</dt>
+                                <dd>{selectedAutomation.schedule}</dd>
+                              </div>
+                              <div>
+                                <dt>下次运行</dt>
+                                <dd>{selectedAutomation.nextRunAt ? formatDateTime(selectedAutomation.nextRunAt) : "-"}</dd>
+                              </div>
+                              <div>
+                                <dt>已执行</dt>
+                                <dd>{selectedAutomation.runCount ?? 0} 次</dd>
+                              </div>
+                              <div>
+                                <dt>最近状态</dt>
+                                <dd className={`automationStatus ${selectedAutomation.lastStatus || "never"}`}>
+                                  {formatAutomationStatus(selectedAutomation)}
+                                </dd>
+                              </div>
+                            </dl>
+                            <div className="detailBlock">
+                              <span>任务内容</span>
+                              <p>{selectedAutomation.prompt}</p>
+                            </div>
+                          </>
+                        )}
+                        {selectedAutomation.lastResult && (
+                          <div className="detailBlock">
+                            <span>最近结果</span>
+                            <p>{selectedAutomation.lastResult}</p>
+                          </div>
+                        )}
+                        {selectedAutomation.runs && selectedAutomation.runs.length > 0 && (
+                          <div className="runHistory">
+                            <span>执行历史</span>
+                            {selectedAutomation.runs.slice(0, 8).map((run) => (
+                              <div className={`runItem ${run.status}`} key={run.id}>
+                                <div>
+                                  <strong>
+                                    {run.trigger === "manual" ? "立即运行" : "定时运行"}
+                                    {run.unread && <em className="inlineBadge">新</em>}
+                                  </strong>
+                                  <small>
+                                    {formatDateTime(run.startedAt)}
+                                    {run.status === "running" ? " · 执行中" : ""}
+                                  </small>
+                                  {run.error && <small className="automationStatus error">{run.error}</small>}
+                                </div>
+                                {run.documentAttachmentId && (
+                                  <a
+                                    href={`/api/attachments/${run.documentAttachmentId}/content`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    打开
+                                  </a>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="detailActions">
+                          {selectedAutomation.lastDocumentAttachmentId && (
+                            <a
+                              className="detailButton"
+                              href={`/api/attachments/${selectedAutomation.lastDocumentAttachmentId}/content`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <FileText size={16} />
+                              打开结果文档
+                            </a>
+                          )}
+                          {selectedAutomation.conversationId && (
+                            <button type="button" onClick={() => loadMessages(selectedAutomation.conversationId!)}>
+                              <MessageCircle size={16} />
+                              查看执行会话
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            disabled={selectedAutomation.lastStatus === "running"}
+                            onClick={() => runAutomationNow(selectedAutomation)}
+                          >
+                            <CircleDot size={16} />
+                            立即运行
+                          </button>
+                          <button type="button" onClick={() => startEditAutomation(selectedAutomation)}>
+                            <PenLine size={16} />
+                            编辑任务
+                          </button>
+                          <button type="button" onClick={() => toggleAutomation(selectedAutomation)}>
+                            {selectedAutomation.enabled ? "停用任务" : "启用任务"}
+                          </button>
+                          <button
+                            className="dangerAction"
+                            type="button"
+                            onClick={() => deleteAutomation(selectedAutomation.id)}
+                          >
+                            <Trash2 size={16} />
+                            删除任务
+                          </button>
+                        </div>
+                      </section>
+                    )}
+                  </div>
+                )}
               </section>
             )}
 
@@ -1196,13 +1527,10 @@ function App() {
                   <button
                     className="permissionButton"
                     type="button"
-                    onClick={() =>
-                      setPermission((value) => (value === "全部允许" ? "确认后执行" : "全部允许"))
-                    }
+                    title="自动执行常规操作，危险删除和重置类命令会被系统拦截"
                   >
                     <ShieldCheck size={17} />
-                    {permission}
-                    <ChevronDown size={16} />
+                    自动安全
                   </button>
                 </div>
                 <div className="rightControls">
@@ -1227,8 +1555,14 @@ function App() {
                   <button className="micButton" type="button" title="语音输入">
                     <Mic size={18} />
                   </button>
-                  <button className="submitButton" type="submit" disabled={isWorking || !input.trim()}>
-                    {isWorking ? <CircleDot size={20} /> : <ArrowUp size={22} />}
+                  <button
+                    className={`submitButton ${isWorking ? "stop" : ""}`}
+                    type={isWorking ? "button" : "submit"}
+                    title={isWorking ? "停止回答" : "发送"}
+                    disabled={!isWorking && !input.trim()}
+                    onClick={isWorking ? stopAgentRun : undefined}
+                  >
+                    {isWorking ? <X size={20} /> : <ArrowUp size={22} />}
                   </button>
                 </div>
               </div>
@@ -1257,6 +1591,77 @@ function App() {
             </form>
           </section>
         </div>
+
+        {showAutomationDialog && (
+          <div className="modalOverlay" role="presentation">
+            <form className="automationDialog" onSubmit={submitAutomation}>
+              <div className="dialogHeader">
+                <div>
+                  <strong>创建自动化</strong>
+                  <span>写一句自然语言任务，SuperCodex 会解析时间并自动执行。</span>
+                </div>
+                <button
+                  type="button"
+                  title="关闭"
+                  onClick={() => {
+                    setShowAutomationDialog(false);
+                    setAutomationInstruction("");
+                  }}
+                >
+                  <X size={17} />
+                </button>
+              </div>
+              <textarea
+                value={automationInstruction}
+                onChange={(event) => setAutomationInstruction(event.target.value)}
+                placeholder="例如：每天早上9点返回新闻"
+                rows={5}
+                autoFocus
+              />
+              {automationPreview && (
+                <div className="automationPreview">
+                  <div>
+                    <span>任务</span>
+                    <strong>{automationPreview.prompt}</strong>
+                  </div>
+                  <div>
+                    <span>时间</span>
+                    <strong>{automationPreview.schedule}</strong>
+                  </div>
+                  <div>
+                    <span>下次运行</span>
+                    <strong>{automationPreview.nextRunAt ? formatDateTime(automationPreview.nextRunAt) : "-"}</strong>
+                  </div>
+                </div>
+              )}
+              <div className="dialogExamples">
+                <button type="button" onClick={() => setAutomationInstruction("每天早上9点返回新闻")}>
+                  每天 09:00 新闻
+                </button>
+                <button type="button" onClick={() => setAutomationInstruction("11:30返回早盘情况")}>
+                  11:30 早盘
+                </button>
+                <button type="button" onClick={() => setAutomationInstruction("每2h提醒喝水和休息")}>
+                  每 2h 休息
+                </button>
+              </div>
+              <div className="dialogActions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAutomationDialog(false);
+                    setAutomationInstruction("");
+                  }}
+                >
+                  取消
+                </button>
+                <button className="primaryAction" type="submit" disabled={!automationInstruction.trim()}>
+                  创建
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         <footer className="stageFooter">
           <span>
@@ -1291,6 +1696,28 @@ function formatFileSize(size: number) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function formatAutomationStatus(automation: Automation) {
+  if (automation.lastStatus === "running") return "正在执行";
+  if (automation.lastStatus === "success") {
+    return `上次成功 ${automation.lastRunAt ? formatDateTime(automation.lastRunAt) : ""}`;
+  }
+  if (automation.lastStatus === "error") {
+    return `上次失败：${automation.lastError || "未知错误"}`;
+  }
+  return "尚未执行";
 }
 
 function renderRichText(content: string) {

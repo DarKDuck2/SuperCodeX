@@ -162,6 +162,29 @@ button {
   background: #eceef1;
 }
 
+.navBadge,
+.inlineBadge {
+  min-width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e5484d;
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1;
+  padding: 0 6px;
+}
+
+.inlineBadge {
+  margin-left: 7px;
+  min-width: 18px;
+  height: 18px;
+  font-size: 10px;
+}
+
 kbd {
   margin-left: auto;
   border: 0;
@@ -993,9 +1016,9 @@ h1 {
 }
 
 .permissionButton {
-  color: #f06b2f;
-  border-color: #f0e1d8;
-  background: #fffaf7;
+  color: #1f7a4d;
+  border-color: #d8eadf;
+  background: #f7fcf8;
 }
 
 .textButton {
@@ -1038,6 +1061,10 @@ h1 {
 
 .submitButton:not(:disabled) {
   background: #2f74ff;
+}
+
+.submitButton.stop {
+  background: #c9382f;
 }
 
 .submitButton:disabled {
@@ -1272,6 +1299,41 @@ h1 {
   box-shadow: 0 8px 26px rgba(31, 35, 40, 0.05);
 }
 
+.automationWorkspace {
+  display: grid;
+  gap: 14px;
+}
+
+.automationToolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.primaryAction {
+  border: 0;
+  border-radius: 999px;
+  background: #1769e0;
+  color: #fff;
+  min-height: 38px;
+  padding: 0 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.automationLayout {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.85fr) minmax(360px, 1.15fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.automationListPanel {
+  max-height: 430px;
+  overflow: auto;
+}
+
 .searchForm {
   min-height: 58px;
   display: grid;
@@ -1325,6 +1387,11 @@ h1 {
   background: #f7f9fb;
 }
 
+.utilityRow.active {
+  background: #edf4ff;
+  color: #1769e0;
+}
+
 .utilityRow span {
   min-width: 0;
   flex: 1;
@@ -1336,11 +1403,224 @@ h1 {
 .automationRow span {
   display: grid;
   gap: 3px;
+  white-space: normal;
 }
 
 .automationRow small {
   color: #7a828c;
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.automationStatus.running {
+  color: #1769e0;
+}
+
+.automationStatus.success {
+  color: #1f7a4d;
+}
+
+.automationStatus.error {
+  color: #c9382f;
+}
+
+.automationDetail {
+  border: 1px solid #e4e7eb;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 8px 26px rgba(31, 35, 40, 0.05);
+  padding: 16px;
+  display: grid;
+  gap: 16px;
+}
+
+.detailHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.detailHeader > div {
+  display: grid;
+  gap: 3px;
+}
+
+.detailHeader strong {
+  font-size: 18px;
+}
+
+.detailHeader small,
+.detailBlock span,
+.detailGrid dt {
+  color: #7a828c;
+  font-size: 12px;
+}
+
+.detailIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: #edf4ff;
+  color: #1769e0;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.detailGrid div {
+  border: 1px solid #edf0f3;
+  border-radius: 10px;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.detailGrid dd,
+.detailGrid dt {
+  margin: 0;
+}
+
+.detailBlock {
+  display: grid;
+  gap: 6px;
+}
+
+.detailBlock p {
+  margin: 0;
+  color: #30343a;
+  line-height: 1.55;
+  max-height: 140px;
+  overflow: auto;
+}
+
+.detailActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.detailActions button,
+.detailButton {
+  min-height: 36px;
+  border: 1px solid #e1e5ea;
+  border-radius: 999px;
+  background: #fff;
+  color: #3c4652;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  text-decoration: none;
+}
+
+.detailActions .dangerAction {
+  color: #c9382f;
+  border-color: #f2d6d4;
+  background: #fff8f7;
+}
+
+.detailActions .primaryAction {
+  border: 0;
+  color: #fff;
+  background: #1769e0;
+}
+
+.detailActions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.detailEditor {
+  display: grid;
+  gap: 10px;
+}
+
+.detailEditor label {
+  display: grid;
+  gap: 6px;
+}
+
+.detailEditor span {
+  color: #7a828c;
+  font-size: 12px;
+}
+
+.detailEditor input,
+.detailEditor textarea {
+  width: 100%;
+  border: 1px solid #dfe4ea;
+  border-radius: 10px;
+  padding: 10px 11px;
+  outline: 0;
+}
+
+.detailEditor textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.runHistory {
+  display: grid;
+  gap: 8px;
+}
+
+.runHistory > span {
+  color: #7a828c;
+  font-size: 12px;
+}
+
+.runItem {
+  min-height: 46px;
+  border: 1px solid #edf0f3;
+  border-radius: 10px;
+  padding: 9px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.runItem > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.runItem strong,
+.runItem small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runItem small {
+  color: #7a828c;
+  font-size: 12px;
+}
+
+.runItem.error {
+  border-color: #f2d6d4;
+  background: #fff8f7;
+}
+
+.runItem.running {
+  border-color: #cfe2ff;
+  background: #f7fbff;
+}
+
+.runItem a {
+  color: #1769e0;
+  text-decoration: none;
+  font-size: 13px;
 }
 
 .emptyText {
@@ -1351,6 +1631,126 @@ h1 {
 
 .statusPanel {
   padding: 18px;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(15, 18, 22, 0.28);
+}
+
+.automationDialog {
+  width: min(560px, 100%);
+  border: 1px solid #e1e6ed;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 26px 80px rgba(15, 18, 22, 0.22);
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.dialogHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dialogHeader div {
+  display: grid;
+  gap: 4px;
+}
+
+.dialogHeader strong {
+  font-size: 18px;
+}
+
+.dialogHeader span {
+  color: #7a828c;
+  font-size: 13px;
+}
+
+.dialogHeader button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: #f3f5f7;
+  color: #525960;
+  display: grid;
+  place-items: center;
+}
+
+.automationDialog textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid #dfe4ea;
+  border-radius: 12px;
+  padding: 12px;
+  outline: 0;
+  line-height: 1.55;
+}
+
+.automationDialog textarea:focus {
+  border-color: #9fc2ff;
+  box-shadow: 0 0 0 3px rgba(47, 116, 255, 0.12);
+}
+
+.automationPreview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.automationPreview div {
+  border: 1px solid #edf0f3;
+  border-radius: 10px;
+  padding: 9px 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.automationPreview span {
+  color: #7a828c;
+  font-size: 12px;
+}
+
+.automationPreview strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.dialogExamples,
+.dialogActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dialogExamples button,
+.dialogActions button {
+  min-height: 36px;
+  border: 1px solid #e1e5ea;
+  border-radius: 999px;
+  background: #fff;
+  color: #3c4652;
+  padding: 0 12px;
+}
+
+.dialogActions {
+  justify-content: flex-end;
+}
+
+.dialogActions .primaryAction:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .statusGrid {
@@ -1483,6 +1883,10 @@ h1 {
   .artifactShelf {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .automationLayout {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 780px) {
@@ -1542,6 +1946,14 @@ h1 {
 
   .artifactShelf {
     width: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .automationPreview {
     grid-template-columns: 1fr;
   }
 }

@@ -8,13 +8,14 @@ SuperCodex 是一个本地运行的通用办公 Agent。它提供类似 Codex / 
 
 - OpenAI-compatible API 接入，支持 DeepSeek、OpenAI、兼容网关或自建模型服务。
 - Agent 自主判断是否调用工具，后端不再用固定规则决定工具开关。
-- 最多 50 轮工具调用，适合较长任务链。
+- 最多 200 轮工具调用，适合较长任务链。
 - 流式执行过程展示，前端可实时看到任务步骤、工具调用和工具结果。
 - 本地项目加载，可让 Agent 读取、搜索、修改项目文件并运行测试。
 - 文件和图片附件上传，支持通过加号菜单或粘贴添加。
 - 图片处理能力，支持缩放、裁剪、旋转、灰度、模糊、锐化、翻转和格式转换。
 - 网络搜索能力，基于 `open-websearch`。
 - Kimi WebBridge 集成，可连接真实浏览器执行网页任务。
+- 自动安全护栏：常规工具调用默认自动执行，删除、强制清理、仓库重置、格式化、提权等危险命令会被后端直接拦截。
 - 工具输出清洗，避免浏览器任务把 HTML / DOM / 原始 JSON 直接输出给用户。
 - 任务步骤卡片和产物卡片，让执行过程和交付物更接近真实办公工作流。
 
@@ -26,7 +27,7 @@ SuperCodex 是一个本地运行的通用办公 Agent。它提供类似 Codex / 
 - 文件上传：Multer
 - 网络搜索：open-websearch
 - 浏览器控制：Kimi WebBridge
-- 状态存储：本地 `.supercodex/state.json`
+- 状态存储：本地 `.supercodex/state.json` 索引 + `.supercodex/conversations/` 会话目录
 
 ## 项目结构
 
@@ -150,9 +151,19 @@ npm run build
 ### 自动化
 
 - `GET /api/automations`
-- `POST /api/automations`
-- `PATCH /api/automations/:id`
+- `POST /api/automations`：创建定时任务，支持 `instruction` 自然语言，例如“每天早上9点返回新闻”“每2h提醒喝水和休息”。
+- `PATCH /api/automations/:id`：更新标题、任务内容、时间规则或启停状态。
 - `DELETE /api/automations/:id`
+
+当前自动化支持：
+
+- 每天固定时间：`每天 09:00`、`每天早上9点`、`11:30返回早盘情况`
+- 固定间隔：`每2h`、`每2小时`
+- 常用办公语义：`下班前完成今日工作的总结` 会解析为 `每天 17:30`
+
+到点后，后端调度器会自动调用 Agent 执行任务，并把结果写入对应的“自动化：...”会话。自动化页会显示下次运行时间、最近状态和跳转入口。
+
+每次自动化执行成功后，系统会生成一份 Markdown 结果文档附件，用户可以在定时任务详情页直接打开。定时任务的启停、删除、查看执行会话和打开结果文档都集中在详情页；创建新任务通过“创建自动化”对话框完成。
 
 ## Agent 工具清单
 
@@ -174,6 +185,10 @@ npm run build
 | `search_web` | 调用 open-websearch 搜索网页 |
 | `webbridge_status` | 检查 Kimi WebBridge 状态 |
 | `webbridge_command` | 通过 Kimi WebBridge 控制真实浏览器 |
+
+### 自动安全策略
+
+SuperCodex 默认完全自动执行 Agent 选择的工具，不要求用户在任务中途逐次确认。为了避免破坏性操作，后端会自动拦截删除、移入废纸篓、`find -delete`、`git clean`、`git reset --hard`、格式化磁盘、写入块设备、提权、关机重启等危险命令。文件工具仍限制在当前工作区内运行。
 
 ## 流式执行事件
 
@@ -218,6 +233,20 @@ npm run build
 4. 文件、搜索、代码修改和测试工具会默认在该目录内运行。
 
 后端会限制文件工具只能访问当前工作区内的路径，避免越界读写。
+
+## 会话持久化
+
+SuperCodex 会为每个对话维护一个独立目录：
+
+```text
+.supercodex/conversations/<对话标题>-<短ID>/
+├── overview.md       # 对话时间、消息数、总结、上传数据和产物索引
+├── messages.json     # 完整对话内容和工具结果
+├── uploads/          # 用户上传的数据
+└── artifacts/        # Agent 产生的文件、图片、报告等产物
+```
+
+`state.json` 继续作为轻量索引，便于快速加载项目、历史记录、自动化和附件映射；完整对话和产物则按会话目录落盘，避免长期使用后所有数据混在一个文件里。新对话标题会优先由模型进行短标题分类生成，无模型配置时使用本地规则兜底。
 
 ## 文件与图片能力
 

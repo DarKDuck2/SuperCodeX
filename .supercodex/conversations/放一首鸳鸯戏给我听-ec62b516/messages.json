@@ -1,0 +1,123 @@
+{
+  "id": "conversation_ec62b516-1b2b-4444-8440-9efa3cde4421",
+  "projectId": "project_7f99b965-a74f-418d-b486-fa1ce6e41d2a",
+  "title": "放一首鸳鸯戏给我听",
+  "shortcut": "⌘9",
+  "updatedAt": "2026-06-08T08:53:30.328Z",
+  "summary": "本次对话围绕“放一首鸳鸯戏给我听”展开。\n最近一次助手回复摘要：已经帮你打开了 **黄龄 - 《鸳鸯戏》** 的在线播放页面 🎶\n\n你可以直接在该页面点击播放按钮收听。还有其他想听的吗？😊",
+  "messages": [
+    {
+      "id": "message_a71e6a10-7914-48ac-a472-988edf1912b2",
+      "role": "user",
+      "content": "放一首鸳鸯戏给我听",
+      "attachments": [],
+      "createdAt": "2026-06-08T08:53:03.784Z"
+    },
+    {
+      "id": "message_5f6277de-9c7d-4b19-9976-46dbe340f26b",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_V6llDCyHGOI0Dl7wfatd5325",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"query\": \"鸳鸯戏 在线播放 歌曲\", \"num\": 5}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T08:53:05.629Z"
+    },
+    {
+      "id": "message_8be41468-07da-4c95-8267-8406c6713be8",
+      "role": "tool",
+      "content": "1. 鸳鸯（鸭科鸳鸯属鸟类）_百度百科\nURL: https://baike.baidu.com/item/%E9%B8%B3%E9%B8%AF/10203899\nDescription: 2021年1月10日 · 鸳鸯（Aix galericulata），别名乌仁哈钦、匹鸟、官鸭等，是鸭科鸳鸯属一种鸟类。 鸳鸯属于小型鸭类，重量约为428克~693克，平均体长为43厘米~51厘米。\nEngine: bing\n\n2. 「鸳鸯」是一种什么生物？ - 知乎\nURL: https://www.zhihu.com/question/304164776\nDescription: 2020年11月6日 · 两只正在戏水的鸳鸯，图中两只都是雄性鸳鸯 鸳鸯其实就是鸭子 鸳鸯为合成词，其中鸳指雄鸟，鸯指雌鸟，在分类上属于雁形目 鸭科。 因此鸳鸯其实就是颜值比较高一点的鸭子，在我们 …\nEngine: bing\n\n3. 鸳鸯 - Mandarin Duck - Aix galericulata - 懂鸟 - 鸟类图片 ...\nURL: http://www.bird.art/nd/131\nDescription: 鸳鸯 （英文名：Mandarin Duck，学名： Aix galericulata），是雁形目鸭科鸳鸯属的鸟类。 源自东亚，尤其是中国东部。 雄鸟以其醒目的羽毛著称，背部有大型橙色‘帆状鳍’，脸颊带橙色条纹，喙小而 …\nEngine: bing\n\n4. 中国最忠贞的鸟，其实并不专情还很花心，被误传了上千年_雌鸟\nURL: https://www.sohu.com/a/332425285_99945595\nDescription: 2019年8月8日 · 从宋朝以后，鸂鶒的人气迅速提升，“紫鸳鸯”中的紫也渐渐被人省去，鸂鶒就渐渐被直接称为了鸳鸯。 到了明清时期，真正的鸳鸯（赤麻鸭）渐渐被人忘却，而鸂鶒则全面占优，拥有了鸳 …\nEngine: bing\n\n5. 鸳鸯 _ 百科\nURL: https://baike.sogou.com/m/v78248.htm\nDescription: 2022年7月24日 · 鸳鸯是小型游禽，雄鸟额和头顶中央翠绿色，并具金属光泽；枕部铜赤色，与后颈的暗紫绿色长羽组成羽冠。 眉纹白色，宽而且长，并向后延伸构成羽冠的一部分。 眼先淡黄色，颊部具 …\nEngine: bing",
+      "tool_call_id": "call_00_V6llDCyHGOI0Dl7wfatd5325",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T08:53:06.384Z"
+    },
+    {
+      "id": "message_975589f6-2aea-4933-93cf-3c704af65014",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_M65K29Klhzl3W46p0JCB0061",
+          "type": "function",
+          "function": {
+            "name": "search_web",
+            "arguments": "{\"query\": \"\\\"鸳鸯戏\\\" 歌曲 播放\", \"num\": 5}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T08:53:08.079Z"
+    },
+    {
+      "id": "message_23b5f7a7-0860-4784-a546-54d3015dcf5d",
+      "role": "tool",
+      "content": "1. 鸳鸯戏 - 黄龄 - 单曲 - 网易云音乐\nURL: https://music.163.com/song?id=2655534737\nDescription: 鸳鸯戏 - 黄龄 - 单曲 - 网易云音乐. 生成外链播放器. 点击打开客户端. 鸳鸯戏. 歌手：黄龄. 播放收藏分享下载评论. 包含这首歌的歌单. 故事于此终结，此音万古流传. by墨衍_NtIe. 网易云音乐多端下载. …\nEngine: bing\n\n2. 鸳鸯戏-高清MV在线看-QQ音乐-千万正版音乐海量无损曲库 ...\nURL: https://y.qq.com/n/yqq/mv/m/010ory6J12HF04.html\nDescription: 《鸳鸯戏》MV在线看！ 海量高清MV在线看，尽在千万正版高品质音乐平台——QQ音乐！\nEngine: bing\n\n3. 鸳鸯戏_黄龄_单曲在线试听_酷我音乐\nURL: http://www.kuwo.cn/play_detail/291911538\nDescription: 2023年8月4日 · 鸳鸯戏，由歌手黄龄演唱，酷我音乐网提供鸳鸯戏无损音乐，鸳鸯戏免费无损下载，鸳鸯戏高品质音乐，HiFi音乐下载，无损音乐在线听，好音质，用酷我。 陪着我，不要停.\nEngine: bing\n\n4. MV-《鸳鸯戏》--黄龄-音乐-高清完整正版视频在线观看-优酷\nURL: https://vo.youku.com/v_show/id_XNTk5OTMzNTg4OA==.html?vid=XNTk5OTMzNTg4OA%3D%3D\nDescription: MV-《鸳鸯戏》--黄龄 是在优酷播出的音乐高清视频,于2023-08-09 11:57:42上线。 视频内容简介:MV--《鸳鸯戏》黄龄 作词：家浚 作曲：家浚乐金震 编曲：陈林len 吉他：吴余涛 二胡：周子珺 和声：执素 …\nEngine: bing\n\n5. 鸳鸯戏_黄龄_高音质在线试听_鸳鸯戏歌词|歌曲下载_酷狗音乐\nURL: https://www.kugou.com/song-36/4g457f91.html\nDescription: 4 天之前 · 酷狗音乐为您提供由黄龄演唱的高清音质无损鸳鸯戏mp3在线听,听鸳鸯戏,只来酷狗音乐!\nEngine: bing",
+      "tool_call_id": "call_00_M65K29Klhzl3W46p0JCB0061",
+      "toolName": "search_web",
+      "createdAt": "2026-06-08T08:53:08.639Z"
+    },
+    {
+      "id": "message_1fec2b6b-b201-4ea3-bd89-58c9a3685f4b",
+      "role": "assistant",
+      "content": "找到了！《鸳鸯戏》是**黄龄**演唱的一首歌。让我帮你打开一个可以直接在线播放的页面 🎵",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_sjjbIrrmTMxnr2wefLwf9854",
+          "type": "function",
+          "function": {
+            "name": "webbridge_status",
+            "arguments": "{}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T08:53:11.832Z"
+    },
+    {
+      "id": "message_617efe9a-49b9-427d-98d3-1dac1936e86a",
+      "role": "tool",
+      "content": "{\"extension_connected\":true,\"extension_id\":\"fldmhceldgbpfpkbgopacenieobmligc\",\"extension_version\":\"1.9.13\",\"port\":10086,\"running\":true,\"update_available\":{\"current\":\"v1.9.16\",\"latest\":\"v1.9.17\",\"command\":\"kimi-webbridge upgrade\"},\"uptime_seconds\":144378,\"version\":\"v1.9.16\"}",
+      "tool_call_id": "call_00_sjjbIrrmTMxnr2wefLwf9854",
+      "toolName": "webbridge_status",
+      "createdAt": "2026-06-08T08:53:11.891Z"
+    },
+    {
+      "id": "message_44f4fddb-6323-40e2-b6cf-3f814d98bf56",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "index": 0,
+          "id": "call_00_Pl1wzL1c0l7wYyocuV4h4358",
+          "type": "function",
+          "function": {
+            "name": "webbridge_command",
+            "arguments": "{\"action\": \"navigate\", \"session\": \"music\", \"args\": {\"url\": \"https://y.qq.com/n/yqq/mv/m/010ory6J12HF04.html\"}}"
+          }
+        }
+      ],
+      "createdAt": "2026-06-08T08:53:14.168Z"
+    },
+    {
+      "id": "message_c6c76ce7-caa9-4942-b089-57c561093050",
+      "role": "tool",
+      "content": "WebBridge navigate result:\n{\n  \"ok\": true,\n  \"data\": {\n    \"url\": \"https://y.qq.com/n/yqq/mv/m/010ory6J12HF04.html\",\n    \"success\": true,\n    \"tabId\": 862556543\n  }\n}",
+      "tool_call_id": "call_00_Pl1wzL1c0l7wYyocuV4h4358",
+      "toolName": "webbridge_command",
+      "createdAt": "2026-06-08T08:53:28.603Z"
+    },
+    {
+      "id": "message_2cfde8f7-8cec-4698-a1c9-da86df29fd0f",
+      "role": "assistant",
+      "content": "已经帮你打开了 **黄龄 - 《鸳鸯戏》** 的在线播放页面 🎶\n\n你可以直接在该页面点击播放按钮收听。还有其他想听的吗？😊",
+      "createdAt": "2026-06-08T08:53:30.328Z"
+    }
+  ]
+}
