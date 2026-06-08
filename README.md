@@ -1,0 +1,362 @@
+# SuperCodex
+
+SuperCodex 是一个本地运行的通用办公 Agent。它提供类似 Codex / Kimi Work 的任务式交互体验，但模型 API 可以自由接入，只要兼容 OpenAI Chat Completions 接口即可。
+
+项目当前定位不是单纯 coding agent，而是面向办公、研究、文件处理、网页任务、本地项目修改和自动化流程的通用 Agent 工作台。
+
+## 核心特性
+
+- OpenAI-compatible API 接入，支持 DeepSeek、OpenAI、兼容网关或自建模型服务。
+- Agent 自主判断是否调用工具，后端不再用固定规则决定工具开关。
+- 最多 50 轮工具调用，适合较长任务链。
+- 流式执行过程展示，前端可实时看到任务步骤、工具调用和工具结果。
+- 本地项目加载，可让 Agent 读取、搜索、修改项目文件并运行测试。
+- 文件和图片附件上传，支持通过加号菜单或粘贴添加。
+- 图片处理能力，支持缩放、裁剪、旋转、灰度、模糊、锐化、翻转和格式转换。
+- 网络搜索能力，基于 `open-websearch`。
+- Kimi WebBridge 集成，可连接真实浏览器执行网页任务。
+- 工具输出清洗，避免浏览器任务把 HTML / DOM / 原始 JSON 直接输出给用户。
+- 任务步骤卡片和产物卡片，让执行过程和交付物更接近真实办公工作流。
+
+## 技术栈
+
+- 前端：React 19 + Vite 7 + TypeScript
+- 后端：Express 5 + TypeScript
+- 图像处理：Sharp
+- 文件上传：Multer
+- 网络搜索：open-websearch
+- 浏览器控制：Kimi WebBridge
+- 状态存储：本地 `.supercodex/state.json`
+
+## 项目结构
+
+```text
+SuperCodex/
+├── server/
+│   └── index.ts              # Express API、Agent Loop、工具注册
+├── src/
+│   ├── App.tsx               # 主前端界面与交互逻辑
+│   ├── App.css               # 界面样式
+│   └── main.tsx              # React 入口
+├── .supercodex/              # 本地持久化状态和上传文件
+├── .env.example              # 环境变量示例
+├── package.json
+├── vite.config.ts
+└── README.md
+```
+
+## 快速开始
+
+### 1. 安装依赖
+
+```bash
+npm install
+```
+
+### 2. 配置环境变量
+
+复制示例配置：
+
+```bash
+cp .env.example .env
+```
+
+编辑 `.env`：
+
+```env
+API_BASE_URL=https://api.openai.com/v1
+API_KEY=sk-your-key
+API_MODEL=gpt-4.1
+PORT=8787
+```
+
+如果使用 DeepSeek，可配置为：
+
+```env
+API_BASE_URL=https://api.deepseek.com
+API_KEY=sk-your-deepseek-key
+API_MODEL=deepseek-chat
+PORT=8787
+```
+
+不要把真实 API Key 提交到仓库。
+
+### 3. 启动开发环境
+
+```bash
+npm run dev
+```
+
+默认服务：
+
+- 前端：`http://localhost:5173`
+- 后端：`http://localhost:8787`
+
+如果你手动指定 Vite 端口，例如：
+
+```bash
+npm run dev:client -- --host 127.0.0.1 --port 5174
+```
+
+则访问：
+
+```text
+http://127.0.0.1:5174/
+```
+
+### 4. 单独启动前后端
+
+```bash
+npm run dev:server
+npm run dev:client
+```
+
+### 5. 构建
+
+```bash
+npm run build
+```
+
+## 后端 API
+
+### 应用状态
+
+- `GET /api/health`：健康检查和工具列表
+- `GET /api/app`：读取应用状态
+- `GET /api/settings`：读取模型配置
+- `PUT /api/settings`：更新模型配置
+
+### 项目与会话
+
+- `POST /api/projects`：创建项目
+- `POST /api/workspaces/load`：加载本地项目目录
+- `GET /api/projects/:id/tree`：读取项目文件树
+- `POST /api/conversations`：创建会话
+- `GET /api/conversations/:id/messages`：读取会话消息
+- `POST /api/conversations/:id/messages`：发送消息，支持 SSE 流式事件
+
+### 附件
+
+- `POST /api/conversations/:id/attachments`：上传附件
+- `GET /api/attachments/:id/content`：读取附件内容
+
+### 工具与能力
+
+- `GET /api/tools`：查看可用工具
+- `GET /api/web/search`：网页搜索
+- `GET /api/webbridge/status`：WebBridge 状态
+- `POST /api/tools/run-command`：执行安全命令
+
+### 自动化
+
+- `GET /api/automations`
+- `POST /api/automations`
+- `PATCH /api/automations/:id`
+- `DELETE /api/automations/:id`
+
+## Agent 工具清单
+
+当前内置工具：
+
+| 工具 | 作用 |
+| --- | --- |
+| `list_directory` | 列出当前工作区目录 |
+| `read_file` | 读取文本文件 |
+| `write_file` | 写入或创建文本文件 |
+| `run_command` | 执行安全 shell 命令 |
+| `search_files` | 使用 ripgrep 搜索项目文件 |
+| `replace_in_file` | 精确替换文件内容 |
+| `run_tests` | 运行测试、lint 或构建命令 |
+| `list_attachments` | 列出当前会话附件 |
+| `read_attachment` | 读取文本附件或返回附件元信息 |
+| `transform_image` | 修改图片并生成新附件 |
+| `fetch_url` | 抓取网页并提取可读内容 |
+| `search_web` | 调用 open-websearch 搜索网页 |
+| `webbridge_status` | 检查 Kimi WebBridge 状态 |
+| `webbridge_command` | 通过 Kimi WebBridge 控制真实浏览器 |
+
+## 流式执行事件
+
+发送消息时可传入：
+
+```json
+{
+  "content": "帮我分析这个网页",
+  "stream": true
+}
+```
+
+后端通过 SSE 返回：
+
+| 事件 | 说明 |
+| --- | --- |
+| `step` | Agent 当前执行步骤 |
+| `assistant_tool_call` | 模型请求调用工具 |
+| `tool_result` | 工具执行完成 |
+| `final` | 最终回复和完整会话 |
+| `error` | 执行失败 |
+
+前端会把这些事件渲染为任务步骤卡片，并默认折叠原始工具结果。
+
+## 前端交互说明
+
+当前界面包括：
+
+- 左侧工作台导航：新建任务、搜索、技能、定时任务、WebBridge、历史记录。
+- 可折叠侧边栏：左上角按钮控制展开和收起。
+- 底部任务输入框：`Enter` 发送，`Shift + Enter` 换行。
+- 加号菜单：上传文件或图片、选择本地项目、添加网页链接、粘贴剪贴板文本。
+- 任务步骤卡片：展示 Agent 正在做什么。
+- 产物卡片：展示附件、图片处理结果和写入文件结果。
+- 富文本回复：将 Markdown 标题、列表、表格、重点文本渲染为自然阅读排版。
+
+## 本地项目工作流
+
+1. 点击底部上下文栏的“进入项目工作”，或从加号菜单选择“选择本地项目”。
+2. 输入本地项目路径。
+3. Agent 会把该目录作为当前工作区。
+4. 文件、搜索、代码修改和测试工具会默认在该目录内运行。
+
+后端会限制文件工具只能访问当前工作区内的路径，避免越界读写。
+
+## 文件与图片能力
+
+支持通过两种方式添加附件：
+
+- 点击加号菜单上传
+- 在输入框中直接粘贴文件或图片
+
+图片处理能力由 Sharp 提供，支持：
+
+- resize
+- crop
+- rotate
+- grayscale
+- blur
+- sharpen
+- flip / flop
+- png / jpeg / webp 格式转换
+
+生成后的图片会作为新附件保存，并在前端显示为产物卡片。
+
+## WebBridge
+
+SuperCodex 可通过 Kimi WebBridge 控制真实浏览器。
+
+安装方式：
+
+```bash
+curl -fsSL https://cdn.kimi.com/webbridge/install.sh | bash
+```
+
+安装后需要确认：
+
+1. daemon 正在运行。
+2. 浏览器扩展已启用。
+3. `/api/webbridge/status` 返回 connected 状态。
+
+WebBridge 适用于需要真实登录态、真实网页交互或截图的任务。
+
+## 安全策略
+
+SuperCodex 是本地 Agent，具备文件读写和命令执行能力。当前安全策略包括：
+
+- 文件路径限制在当前工作区内。
+- 命令执行存在黑名单过滤。
+- 默认阻止高风险命令，例如：
+  - `rm -rf`
+  - `git reset --hard`
+  - `git clean -fd`
+  - `sudo`
+  - `mkfs`
+  - `dd if=`
+- 网页抓取会清洗 HTML / DOM，避免原始网页源码直接进入最终回复。
+
+注意：当前项目还不是强沙箱环境。如果要在生产或多人环境使用，建议增加容器隔离、权限确认和审计日志。
+
+## 数据存储
+
+本地状态存储在：
+
+```text
+.supercodex/state.json
+```
+
+附件存储在：
+
+```text
+.supercodex/uploads/
+```
+
+这些数据默认不应提交到 Git。
+
+## 常见问题
+
+### 前端显示“无法连接后端”
+
+检查后端是否运行：
+
+```bash
+curl http://localhost:8787/api/health
+```
+
+如果无法连接，启动后端：
+
+```bash
+npm run dev:server
+```
+
+### 端口不一致
+
+Vite 默认配置代理到：
+
+```text
+http://localhost:8787
+```
+
+如果修改后端端口，需要同步修改 `.env` 和 `vite.config.ts`。
+
+### 模型不调用工具
+
+当前工具调用由模型自行判断。请确认：
+
+- API 模型支持 OpenAI tools / function calling。
+- 后端 `/api/health` 能看到工具列表。
+- 请求中没有关闭工具能力。
+
+### open-websearch 不可用
+
+确认依赖已安装：
+
+```bash
+npm install
+```
+
+并检查：
+
+```bash
+npx open-websearch --help
+```
+
+## 开发建议
+
+- 优先保持工具结果结构化，避免把原始 HTML、DOM、超长日志直接暴露给模型和用户。
+- 新增工具时同时考虑：
+  - 工具定义
+  - 参数边界
+  - 安全策略
+  - 前端步骤展示摘要
+  - 产物提取逻辑
+- 涉及文件写入、命令执行、网页自动化时，应增加更细粒度权限确认。
+
+## 当前限制
+
+- 没有真正的 Docker / VM 沙箱隔离。
+- 自动化任务目前是基础数据结构，尚未实现完整调度器。
+- 邮件、日历、云文档等办公连接仍是技能入口，尚未接入完整第三方 OAuth。
+- WebBridge 依赖本机 daemon 和浏览器扩展状态。
+- 多 Agent 并行尚未实现。
+
+## License
+
+当前项目为私有项目，暂未声明开源许可证。

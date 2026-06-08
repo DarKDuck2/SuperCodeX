@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentVille 产品设计文档（PRD v0.1）</title>
+<style>
+  :root {
+    --primary: #6366f1;
+    --primary-light: #818cf8;
+    --secondary: #0ea5e9;
+    --accent: #f59e0b;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --tag-mvp: #22c55e;
+    --tag-v1: #3b82f6;
+    --tag-v2: #a855f7;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+  }
+
+  /* Hero */
+  .hero {
+    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #4338ca 100%);
+    color: white;
+    padding: 80px 40px 60px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle at 30% 50%, rgba(99,102,241,0.15) 0%, transparent 60%),
+                radial-gradient(circle at 70% 50%, rgba(14,165,233,0.1) 0%, transparent 60%);
+    animation: shimmer 15s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    0%, 100% { transform: translate(0, 0) rotate(0deg); }
+    50% { transform: translate(-2%, -2%) rotate(2deg); }
+  }
+  .hero-content { position: relative; z-index: 1; }
+  .hero-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.12);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.2);
+    padding: 6px 18px;
+    border-radius: 100px;
+    font-size: 13px;
+    letter-spacing: 1px;
+    margin-bottom: 24px;
+  }
+  .hero h1 {
+    font-size: 48px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    margin-bottom: 12px;
+    background: linear-gradient(to right, #e0e7ff, #a5b4fc, #67e8f9);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .hero-sub {
+    font-size: 18px;
+    color: rgba(255,255,255,0.7);
+    max-width: 600px;
+    margin: 0 auto 20px;
+  }
+  .hero-meta {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+  .hero-meta span {
+    font-size: 14px;
+    color: rgba(255,255,255,0.6);
+  }
+  .hero-meta strong {
+    color: rgba(255,255,255,0.9);
+    font-weight: 600;
+  }
+
+  /* Layout */
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  /* TOC */
+  .toc {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px 32px;
+    margin-bottom: 48px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .toc h2 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 16px;
+  }
+  .toc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 6px;
+  }
+  .toc-grid a {
+    color: var(--primary);
+    text-decoration: none;
+    font-size: 14px;
+    padding: 4px 0;
+    transition: color 0.2s;
+  }
+  .toc-grid a:hover { color: var(--primary-light); text-decoration: underline; }
+
+  /* Section */
+  .section {
+    margin-bottom: 48px;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--primary);
+  }
+  .section-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: var(--primary);
+    color: white;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .section h2 {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .section h3 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 28px 0 12px;
+    color: #1e293b;
+  }
+  .section h4 {
+    font-size: 17px;
+    font-weight: 600;
+    margin: 20px 0 10px;
+    color: #334155;
+  }
+  .section p {
+    margin-bottom: 14px;
+    font-size: 15px;
+    color: #334155;
+  }
+
+  /* Blockquote */
+  blockquote {
+    background: linear-gradient(135deg, #eef2ff, #e0e7ff);
+    border-left: 4px solid var(--primary);
+    padding: 16px 20px;
+    margin: 16px 0;
+    border-radius: 0 12px 12px 0;
+    font-size: 15px;
+    color: #1e293b;
+  }
+  blockquote strong {
+    color: var(--primary);
+  }
+
+  /* Tables */
+  .table-wrap {
+    overflow-x: auto;
+    margin: 16px 0;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  thead {
+    background: #f1f5f9;
+  }
+  th {
+    text-align: left;
+    padding: 12px 16px;
+    font-weight: 600;
+    color: #475569;
+    border-bottom: 2px solid var(--border);
+    white-space: nowrap;
+  }
+  td {
+    padding: 10px 16px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f8fafc; }
+
+  /* Code blocks */
+  .code-block {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 20px 24px;
+    border-radius: 12px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+    font-size: 13px;
+    line-height: 1.8;
+    overflow-x: auto;
+    margin: 16px 0;
+  }
+  .code-block .arrow { color: #f472b6; }
+  .code-block .keyword { color: #38bdf8; }
+  .code-block .string { color: #a3e635; }
+  .code-block .comment { color: #64748b; }
+  .code-block .bracket { color: #fbbf24; }
+
+  /* Tags */
+  .tag {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 100px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .tag-mvp { background: #dcfce7; color: #166534; }
+  .tag-v1 { background: #dbeafe; color: #1e40af; }
+  .tag-v2 { background: #f3e8ff; color: #6b21a8; }
+
+  /* Vision Card */
+  .vision-card {
+    background: linear-gradient(135deg, #eef2ff, #f0f9ff);
+    border: 1px solid #c7d2fe;
+    border-radius: 16px;
+    padding: 28px 32px;
+    margin: 16px 0;
+    text-align: center;
+  }
+  .vision-card .quote {
+    font-size: 22px;
+    font-weight: 700;
+    color: #312e81;
+    margin-bottom: 10px;
+  }
+  .vision-card .desc {
+    font-size: 15px;
+    color: #475569;
+  }
+
+  /* Feature Map */
+  .feature-tree {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 20px 24px;
+    border-radius: 12px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    margin: 16px 0;
+    overflow-x: auto;
+  }
+  .feature-tree .branch { color: #67e8f9; }
+  .feature-tree .leaf { color: #a5f3fc; }
+  .feature-tree .highlight { color: #fbbf24; }
+
+  /* Priority Matrix */
+  .matrix-table th:first-child { min-width: 180px; }
+  .matrix-table .check { color: var(--tag-mvp); font-weight: bold; }
+
+  /* Risk Cards */
+  .risk-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin: 16px 0;
+  }
+  .risk-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .risk-card h4 {
+    margin: 0 0 8px;
+    font-size: 15px;
+  }
+  .risk-card .risk-label {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #fef2f2;
+    color: #dc2626;
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .risk-card .mit-label {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #f0fdf4;
+    color: #16a34a;
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 8px;
+  }
+  .risk-card p {
+    font-size: 13px;
+    color: #475569;
+    margin: 4px 0;
+  }
+
+  /* Milestones */
+  .milestone-timeline {
+    position: relative;
+    padding-left: 32px;
+    margin: 20px 0;
+  }
+  .milestone-timeline::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    top: 8px;
+    bottom: 8px;
+    width: 3px;
+    background: linear-gradient(to bottom, var(--primary), var(--secondary));
+    border-radius: 3px;
+  }
+  .milestone-item {
+    position: relative;
+    margin-bottom: 28px;
+    padding-left: 20px;
+  }
+  .milestone-item::before {
+    content: '';
+    position: absolute;
+    left: -26px;
+    top: 6px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 3px solid var(--primary);
+    background: var(--card);
+  }
+  .milestone-item .tag-phase {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 2px 10px;
+    border-radius: 100px;
+    display: inline-block;
+    margin-bottom: 6px;
+  }
+  .phase-m0 { background: #fef3c7; color: #92400e; }
+  .phase-m1 { background: #dbeafe; color: #1e40af; }
+  .phase-m2 { background: #dcfce7; color: #166534; }
+  .phase-m3 { background: #f3e8ff; color: #6b21a8; }
+  .milestone-item h4 {
+    margin: 4px 0 8px;
+    font-size: 16px;
+  }
+  .milestone-item ul {
+    list-style: none;
+    padding: 0;
+  }
+  .milestone-item ul li {
+    font-size: 14px;
+    color: #475569;
+    padding: 2px 0;
+    position: relative;
+    padding-left: 16px;
+  }
+  .milestone-item ul li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--primary);
+  }
+
+  /* User Journey */
+  .journey-flow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    margin: 16px 0;
+  }
+  .journey-step {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 13px;
+    color: #334155;
+    white-space: nowrap;
+  }
+  .journey-arrow {
+    color: var(--primary);
+    font-size: 18px;
+    font-weight: bold;
+  }
+
+  /* Open Questions */
+  .question-list {
+    list-style: none;
+    padding: 0;
+  }
+  .question-list li {
+    padding: 14px 18px;
+    margin-bottom: 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 14px;
+    color: #334155;
+    border-left: 3px solid var(--accent);
+  }
+  .question-list li strong {
+    color: var(--text);
+  }
+
+  /* Responsive */
+  @media (max-width: 640px) {
+    .hero { padding: 48px 20px 40px; }
+    .hero h1 { font-size: 30px; }
+    .hero-meta { gap: 16px; }
+    .container { padding: 24px 16px 60px; }
+    .toc-grid { grid-template-columns: 1fr; }
+    .risk-grid { grid-template-columns: 1fr; }
+    .journey-flow { flex-direction: column; align-items: flex-start; }
+    .journey-arrow { transform: rotate(90deg); }
+  }
+</style>
+</head>
+<body>
+
+<!-- Hero -->
+<div class="hero">
+  <div class="hero-content">
+    <div class="hero-badge">📄 PRD v0.1 · DRAFT</div>
+    <h1>AgentVille</h1>
+    <p class="hero-sub">让多 Agent 协作像一家"看得见的公司"在运作</p>
+    <div class="hero-meta">
+      <span>项目代号 <strong>AgentVille</strong></span>
+      <span>版本 <strong>v0.1（初稿）</strong></span>
+      <span>状态 <strong>Draft / 待评审</strong></span>
+      <span>受众 <strong>产品 · 研发 · 设计</strong></span>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- TOC -->
+  <div class="toc">
+    <h2>📋 目录</h2>
+    <div class="toc-grid">
+      <a href="#sec0">0. 文档信息</a>
+      <a href="#sec1">1. 产品愿景</a>
+      <a href="#sec2">2. 产品定位</a>
+      <a href="#sec3">3. 目标用户与场景</a>
+      <a href="#sec4">4. 产品核心概念</a>
+      <a href="#sec5">5. 核心功能模块</a>
+      <a href="#sec6">6. 关键用户旅程</a>
+      <a href="#sec7">7. 核心功能详述</a>
+      <a href="#sec8">8. UI/UX 设计原则</a>
+      <a href="#sec9">9. 衡量指标</a>
+      <a href="#sec10">10. 商业模式</a>
+      <a href="#sec11">11. 风险与缓解</a>
+      <a href="#sec12">12. 里程碑</a>
+      <a href="#sec13">13. 开放问题</a>
+      <a href="#sec14">14. 附录</a>
+    </div>
+  </div>
+
+  <!-- 0. 文档信息 -->
+  <div class="section" id="sec0">
+    <div class="section-header">
+      <span class="section-number">0</span>
+      <h2>文档信息</h2>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>项</th><th>值</th></tr></thead>
+        <tbody>
+          <tr><td>项目代号</td><td><strong>AgentVille</strong></td></tr>
+          <tr><td>文档版本</td><td>v0.1（初稿）</td></tr>
+          <tr><td>状态</td><td><span class="tag tag-v1" style="background:#fef3c7;color:#92400e;">Draft / 待评审</span></td></tr>
+          <tr><td>受众</td><td>产品、研发、设计、早期用户</td></tr>
+          <tr><td>目标</td><td>定义 AgentVille 的产品愿景、形态、功能边界与上线节奏，作为研发与设计的共同基线</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 1. 产品愿景 -->
+  <div class="section" id="sec1">
+    <div class="section-header">
+      <span class="section-number">1</span>
+      <h2>产品愿景</h2>
+    </div>
+    <div class="vision-card">
+      <div class="quote">🤖 让多 Agent 协作像一家"看得见的公司"在运作</div>
+      <div class="desc">
+        AgentVille 是一个<strong>可视化的多 Agent 协作平台</strong>。用户在这里组建 AI 团队、派发任务、观察协作过程；
+        外部 AI 工具（Claude Code、Codex 等）可以把 AgentVille 的团队当作"外包公司"直接调用。
+      </div>
+    </div>
+    <p>我们相信下一阶段的 AI 生产力来自<strong>组织化的 Agent 协作</strong>，但当前的多 Agent 系统普遍存在三个问题：<strong>黑盒、难调试、无趣</strong>。AgentVille 用"AI 公司"这一隐喻把它们一次性解决。</p>
+  </div>
+
+  <!-- 2. 产品定位 -->
+  <div class="section" id="sec2">
+    <div class="section-header">
+      <span class="section-number">2</span>
+      <h2>产品定位</h2>
+    </div>
+    <h3>2.1 一句话定位</h3>
+    <blockquote><strong>一个把多 Agent 协作可视化为 AI 公司的协作平台，并以 MCP 标准对外暴露团队能力。</strong></blockquote>
+
+    <h3>2.2 三个定位锚点</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>锚点</th><th>含义</th><th>与同类产品的差异</th></tr></thead>
+        <tbody>
+          <tr><td><strong>组织化</strong></td><td>Agent → Team → Multi-Team 三层结构，有角色、有 Leader、有协作规则</td><td>不只是"Agent 列表"，而是"组织架构"</td></tr>
+          <tr><td><strong>可视化</strong></td><td>办公室俯视视图 + 节点图调试视图双视角</td><td>不是抽象拓扑图，是有"人"在动的场景</td></tr>
+          <tr><td><strong>可外包</strong></td><td>通过 MCP 把整支团队暴露给外部 Agent 调用</td><td>不只是用工具，更是"被工具使用"</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>2.3 不是什么</h3>
+    <ul style="list-style:none;padding:0;">
+      <li style="padding:6px 0;">❌ <strong>不是又一个 AutoGen / CrewAI</strong> — 那些是框架（给开发者写代码），AgentVille 是产品（给用户用界面）</li>
+      <li style="padding:6px 0;">❌ <strong>不是 Agent Marketplace</strong> — 不卖 Agent，专注协作与编排</li>
+      <li style="padding:6px 0;">❌ <strong>不是通用聊天机器人</strong> — 任务驱动，不是闲聊驱动</li>
+    </ul>
+  </div>
+
+  <!-- 3. 目标用户与场景 -->
+  <div class="section" id="sec3">
+    <div class="section-header">
+      <span class="section-number">3</span>
+      <h2>目标用户与场景</h2>
+    </div>
+    <h3>3.1 用户画像</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>画像</th><th>描述</th><th>核心诉求</th><th>价值主张</th></tr></thead>
+        <tbody>
+          <tr><td><strong>AI 重度使用者（P0）</strong></td><td>已经在用 Claude Code/Codex 等工具开发的工程师</td><td>想把重复的"调研+整理+输出"流程外包，专注核心代码</td><td>让 Claude Code 直接调用 AgentVille 团队，把杂活外包</td></tr>
+          <tr><td><strong>效率型知识工作者（P1）</strong></td><td>产品经理、运营、咨询、研究员</td><td>想用多 Agent 完成"调研→分析→成文"链路，但缺乏编程能力</td><td>可视化组队 + 自然语言派活，不写代码</td></tr>
+          <tr><td><strong>AI 应用开发者（P1）</strong></td><td>在做 Agent 类产品的同行</td><td>需要一个可复用的多 Agent 编排底座</td><td>开放 API/SDK，把 AgentVille 嵌入自己的产品</td></tr>
+          <tr><td><strong>AI 爱好者/玩家（P2）</strong></td><td>喜欢调教 AI、看 AI 互动的用户</td><td>想看 AI 协作的过程，享受"养成"乐趣</td><td>办公室视图、AI 员工人格化、招聘/解雇</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>3.2 核心场景（按优先级）</h3>
+    <h4>S1：外部 Agent 外包任务（P0，差异化核心）</h4>
+    <blockquote>工程师在 Claude Code 写代码时，让代码助手把"帮我调研一下竞品的 X 功能"丢给 AgentVille 的"调研团队"，自己继续写代码。完成后查看产出。</blockquote>
+    <h4>S2：浏览器内组队执行任务（P0）</h4>
+    <blockquote>用户登录 AgentVille，组建一个"研报团队"（含分析师、数据工程师、文字编辑），自然语言下达任务"产出一份 Q2 行业研报"，实时观察 Agent 协作过程，最终获得文档。</blockquote>
+    <h4>S3：观察与调试（P0）</h4>
+    <blockquote>开发者在节点图视图中查看上一次任务执行链路，定位某个 Agent 为何做出错误决策，调整其 prompt 或工具权限后重跑。</blockquote>
+    <h4>S4：多团队协作（P1）</h4>
+    <blockquote>"研报团队"的 Leader 在执行中向"数据团队"请求一份数据，两支团队的 Leader 自动握手协作。</blockquote>
+    <h4>S5：观赏与养成（P2）</h4>
+    <blockquote>用户在闲暇时打开办公室视图，看自己的 AI 员工在跑任务，给优秀员工"加薪"（更好的模型）或"换岗"。</blockquote>
+  </div>
+
+  <!-- 4. 产品核心概念 -->
+  <div class="section" id="sec4">
+    <div class="section-header">
+      <span class="section-number">4</span>
+      <h2>产品核心概念</h2>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>概念</th><th>定义</th><th>用户层认知</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Agent（员工）</strong></td><td>单个 AI 实例，有角色、能力、人格、可用工具</td><td>"我的 AI 员工"</td></tr>
+          <tr><td><strong>Team（团队/部门）</strong></td><td>一组 Agent + 一个 Leader + 协作规则</td><td>"我的 AI 团队"</td></tr>
+          <tr><td><strong>Leader（团队领导）</strong></td><td>团队中负责规划、派活、裁决的特殊 Agent</td><td>"团队负责人"</td></tr>
+          <tr><td><strong>Office（办公室）</strong></td><td>一个 Team 的可视化空间</td><td>"我的办公室"</td></tr>
+          <tr><td><strong>Task（任务）</strong></td><td>用户或外部系统派发给 Team / Agent 的工作</td><td>"派活"</td></tr>
+          <tr><td><strong>Run（执行）</strong></td><td>Task 的一次具体执行实例</td><td>"这次跑"</td></tr>
+          <tr><td><strong>Capability（能力）</strong></td><td>Agent 可以做的事的原子声明</td><td>"技能"</td></tr>
+          <tr><td><strong>Tool（工具）</strong></td><td>Agent 可以调用的外部能力（搜索、画图等）</td><td>"工具"</td></tr>
+          <tr><td><strong>Memory（记忆）</strong></td><td>短期对话、团队共享笔记、长期经验</td><td>"记忆 / 团队共享文档"</td></tr>
+          <tr><td><strong>Persona（形象）</strong></td><td>Agent 的外观与人格设定</td><td>"员工卡片"</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 5. 核心功能模块 -->
+  <div class="section" id="sec5">
+    <div class="section-header">
+      <span class="section-number">5</span>
+      <h2>核心功能模块</h2>
+    </div>
+    <h3>5.1 功能地图</h3>
+    <div class="feature-tree">
+      <span class="highlight">AgentVille</span><br>
+      ├── <span class="branch">工作台 (Workspace)</span><br>
+      │   ├── <span class="leaf">我的团队</span><br>
+      │   ├── <span class="leaf">我的任务</span><br>
+      │   ├── <span class="leaf">我的产物</span><br>
+      │   └── <span class="leaf">通知中心</span><br>
+      ├── <span class="branch">团队管理 (Team Management)</span><br>
+      │   ├── <span class="leaf">团队创建/编辑</span><br>
+      │   ├── <span class="leaf">员工招聘/编辑/解雇</span><br>
+      │   ├── <span class="leaf">Leader 设置</span><br>
+      │   ├── <span class="leaf">工具授权</span><br>
+      │   └── <span class="leaf">协作规则</span><br>
+      ├── <span class="branch">任务执行 (Task Execution)</span><br>
+      │   ├── <span class="leaf">自然语言派活</span><br>
+      │   ├── <span class="leaf">实时观察（双视图）</span><br>
+      │   ├── <span class="leaf">中断/继续/取消</span><br>
+      │   ├── <span class="leaf">产物查看与下载</span><br>
+      │   └── <span class="leaf">历史与回放</span><br>
+      ├── <span class="branch">可视化 (Visualization)</span><br>
+      │   ├── <span class="leaf">Office View（办公室俯视）</span><br>
+      │   ├── <span class="leaf">Graph View（节点图调试）</span><br>
+      │   ├── <span class="leaf">Timeline View（时间线）</span><br>
+      │   └── <span class="leaf">Cost View（成本视图）</span><br>
+      ├── <span class="branch">集成中心 (Integrations)</span><br>
+      │   ├── <span class="leaf">MCP Server（暴露团队给外部）</span><br>
+      │   ├── <span class="leaf">MCP Client（接入外部工具）</span><br>
+      │   ├── <span class="leaf">External Agent（接入 Claude Code/Codex）</span><br>
+      │   └── <span class="leaf">A2A（与其它 Agent 系统互通）</span><br>
+      ├── <span class="branch">治理 (Governance)</span><br>
+      │   ├── <span class="leaf">预算与配额</span><br>
+      │   ├── <span class="leaf">权限与角色（RBAC）</span><br>
+      │   ├── <span class="leaf">审计日志</span><br>
+      │   └── <span class="leaf">安全策略</span><br>
+      └── <span class="branch">设置 (Settings)</span><br>
+          ├── <span class="leaf">个人/组织</span><br>
+          ├── <span class="leaf">LLM Provider</span><br>
+          ├── <span class="leaf">主题与偏好</span><br>
+          └── <span class="leaf">开发者选项</span>
+    </div>
+
+    <h3>5.2 功能优先级矩阵</h3>
+    <div class="table-wrap">
+      <table class="matrix-table">
+        <thead><tr><th>功能</th><th>MVP</th><th>V1</th><th>V2</th></tr></thead>
+        <tbody>
+          <tr><td>单 Agent 创建与运行</td><td class="check">✅</td><td></td><td></td></tr>
+          <tr><td>Team 组建（≤5 人）</td><td class="check">✅</td><td></td><td></td></tr>
+          <tr><td>自然语言派活</td><td class="check">✅</td><td></td><td></td></tr>
+          <tr><td>节点图实时观察</td><td class="check">✅</td><td></td><td></td></tr>
+          <tr><td>Task 状态/产物查看</td><td class="check">✅</td><td></td><td></td></tr>
+          <tr><td>工具授权（基础）</td><td class="check">✅</td><td></td><td></td></tr>
+          <tr><td>MCP Server 暴露团队</td><td class="check">✅</td><td></td><td></td></tr>
+          <tr><td>历史回放</td><td></td><td class="check">✅</td><td></td></tr>
+          <tr><td>Office View（2D 办公室）</td><td></td><td class="check">✅</td><td></td></tr>
+          <tr><td>多 Team + Leader 间通信</td><td></td><td class="check">✅</td><td></td></tr>
+          <tr><td>外部 Agent 入职（Claude Code/Codex）</td><td></td><td class="check">✅</td><td></td></tr>
+          <tr><td>Cost / Budget 管理</td><td></td><td class="check">✅</td><td></td></tr>
+          <tr><td>A2A 跨系统互通</td><td></td><td class="check">✅</td><td></td></tr>
+          <tr><td>Agent Persona 自定义</td><td></td><td></td><td class="check">✅</td></tr>
+          <tr><td>3D 办公室 / 沉浸场景</td><td></td><td></td><td class="check">✅</td></tr>
+          <tr><td>团队模板市场</td><td></td><td></td><td class="check">✅</td></tr>
+          <tr><td>多租户与组织管理</td><td></td><td></td><td class="check">✅</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 6. 关键用户旅程 -->
+  <div class="section" id="sec6">
+    <div class="section-header">
+      <span class="section-number">6</span>
+      <h2>关键用户旅程</h2>
+    </div>
+    <h3>6.1 首次上手（Onboarding）</h3>
+    <div class="journey-flow">
+      <span class="journey-step">注册登录</span>
+      <span class="journey-arrow">↓</span>
+      <span class="journey-step">选团队模板</span>
+      <span class="journey-arrow">↓</span>
+      <span class="journey-step">自动生成 AI 员工</span>
+      <span class="journey-arrow">↓</span>
+      <span class="journey-step">派示例任务</span>
+      <span class="journey-arrow">↓</span>
+      <span class="journey-step">实时观察协作</span>
+      <span class="journey-arrow">↓</span>
+      <span class="journey-step">连接 Claude Code</span>
+    </div>
+    <blockquote><strong>北极星目标</strong>：用户在 <strong>10 分钟内</strong> 完成"创建团队→派活→拿到产物→连上 Claude Code"的完整闭环。</blockquote>
+
+    <h3>6.2 日常使用：浏览器内派活</h3>
+    <div class="journey-flow">
+      <span class="journey-step">进入 Workspace</span>
+      <span class="journey-arrow">↓</span>
+      <span class="journey-step">选择/切换团队</span>
+      <span class="journey-arrow">↓</span>
+      <span class="journey-step">输入自然语言任务</span>
+      <span class="journey-arrow">↓</span>
+      <span class="journey-step">选择交付格式/预算</span>
+      <span class="journey-arrow">↓</span>
+      <span class="journey-step">点击"派活"</span>
+      <span class="journey-arrow">↓</span>
+      <span class="journey-step">实时观察协作</span>
+      <span class="journey-arrow">↓</span>
+      <span class="journey-step">任务完成 → 查看产物</span>
+    </div>
+
+    <h3>6.3 关键场景：外部 Agent 外包</h3>
+    <div class="code-block">
+      <span class="comment">// 用户在 Claude Code 中输入</span><br>
+      <span class="string">"@agentville 调研一下 Rust 异步 actor 框架的现状，对比 Actix / Coerce / Riker"</span><br><br>
+      <span class="comment">// Claude Code 调用 AgentVille MCP</span><br>
+      <span class="keyword">av.team.submit</span>({ <span class="string">team</span>: <span class="string">"调研团队"</span>, <span class="string">task</span>: <span class="string">"..."</span> })<br><br>
+      <span class="comment">// AgentVille 返回 task_id，用户可选择</span><br>
+      <span class="bracket">(a)</span> 继续在 Claude Code 中等待<br>
+      <span class="bracket">(b)</span> 跳转到 AgentVille Web 实时观察<br><br>
+      <span class="comment">// 任务完成，Claude Code 收到产物 URL + 摘要</span>
+    </div>
+  </div>
+
+  <!-- 7. 核心功能详述 -->
+  <div class="section" id="sec7">
+    <div class="section-header">
+      <span class="section-number">7</span>
+      <h2>核心功能详述</h2>
+    </div>
+
+    <h3>7.1 团队管理</h3>
+    <h4>团队创建</h4>
+    <ul style="padding-left:20px;margin-bottom:12px;">
+      <li>三种入口：从模板创建 / 从零创建 / 复制现有团队</li>
+      <li>必填：团队名、目标领域（决定默认工具集）</li>
+      <li>可选：成员数量上限、预算上限、是否允许跨团队通信</li>
+    </ul>
+
+    <h4>员工招聘</h4>
+    <ul style="padding-left:20px;margin-bottom:12px;">
+      <li>选 Role（Engineer / Analyst / Editor / Researcher / Custom）</li>
+      <li>选 Persona（头像、名字、性格描述、口头禅）</li>
+      <li>配置 LLM Model（自动按角色推荐，可手动覆盖）</li>
+      <li>工具授权（按 Capability 勾选，超出预设需二次确认）</li>
+      <li>设置个性化 prompt（高级）</li>
+    </ul>
+
+    <h4>Leader 配置</h4>
+    <ul style="padding-left:20px;margin-bottom:12px;">
+      <li>必须指定一名（默认创建团队时自动生成）</li>
+      <li>选择策略：Sequential / Reactive / Hybrid — "按计划走"/"随机应变"/"混合"</li>
+      <li>设置 Leader 是否有"招聘权"（自动扩员）</li>
+    </ul>
+
+    <h4>工具授权</h4>
+    <ul style="padding-left:20px;margin-bottom:12px;">
+      <li>三类来源：内置工具、MCP 远程工具、外部 Agent</li>
+      <li>默认按 Role 给一套白名单</li>
+      <li>危险工具（写文件、执行 shell、调用付费 API）必须显式开启</li>
+    </ul>
+
+    <h3>7.2 任务派发与执行</h3>
+    <h4>派活入口</h4>
+    <ul style="padding-left:20px;margin-bottom:12px;">
+      <li>自然语言输入框（主入口）</li>
+      <li>结构化派活（高级：指定具体步骤、限定工具、设置子任务依赖）</li>
+      <li>API/MCP 派活（外部系统）</li>
+      <li>定时派活（V2）</li>
+    </ul>
+
+    <h4>派活时可选项</h4>
+    <ul style="padding-left:20px;margin-bottom:12px;">
+      <li>目标 Team / 单 Agent</li>
+      <li>预算上限（token / $）</li>
+      <li>截止时间</li>
+      <li>交付格式（文档 / 表格 / 代码 / 图片 / 自由）</li>
+      <li>重要性（影响模型选择策略）</li>
+      <li>上下文附件（可上传文件作为参考）</li>
+    </ul>
+
+    <h4>任务生命周期</h4>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin:12px 0;">
+      <span style="background:#fef3c7;padding:4px 14px;border-radius:100px;font-size:13px;font-weight:600;">⏳ Pending</span>
+      <span style="color:#64748b;font-size:20px;">→</span>
+      <span style="background:#dbeafe;padding:4px 14px;border-radius:100px;font-size:13px;font-weight:600;">📋 Planning</span>
+      <span style="color:#64748b;font-size:20px;">→</span>
+      <span style="background:#dcfce7;padding:4px 14px;border-radius:100px;font-size:13px;font-weight:600;">⚡ Running</span>
+      <span style="color:#64748b;font-size:20px;">→</span>
+      <span style="background:#22c55e;color:white;padding:4px 14px;border-radius:100px;font-size:13px;font-weight:600;">✅ Done</span>
+    </div>
+    <p>支持随时<strong>暂停 / 继续 / 取消 / 注入指令</strong>（"停一下，先把 X 做掉"）。</p>
+
+    <h3>7.3 双视图可视化</h3>
+    <h4>🏢 Office View（办公室俯视，主视图）</h4>
+    <ul style="padding-left:20px;margin-bottom:12px;">
+      <li>像素风 / 卡通风 2D 俯视场景</li>
+      <li>每个 Agent 是一个员工形象，有座位、有动画</li>
+      <li>空闲 → 喝咖啡/看书 | 思考中 → 头顶冒灯泡 | 调工具 → 走到工具区 | 沟通 → 对话气泡</li>
+      <li>点击 Agent → 查看详细状态、当前 prompt、最近 tool calls</li>
+    </ul>
+
+    <h4>🔗 Graph View（节点图，调试视图）</h4>
+    <ul style="padding-left:20px;margin-bottom:12px;">
+      <li>节点 = Agent / Step，边 = 消息</li>
+      <li>节点上显示：状态、耗时、token、$</li>
+      <li>点击节点 → 查看完整 prompt / response / tool call 详情</li>
+    </ul>
+
+    <h4>📊 Timeline View（时间线）</h4>
+    <ul style="padding-left:20px;margin-bottom:12px;">
+      <li>横轴时间，纵轴 Agent</li>
+      <li>每个 Agent 的活动以色块呈现（思考/调工具/等待/通信）</li>
+    </ul>
+
+    <h4>💰 Cost View（成本视图）</h4>
+    <ul style="padding-left:20px;margin-bottom:12px;">
+      <li>按 Team / Agent / Model / 时间段聚合</li>
+      <li>显示 token 消耗、$ 消耗、调用次数</li>
+      <li>预算预警与超额拦截</li>
+    </ul>
+
+    <h3>7.4 集成中心</h3>
+    <h4>🔌 MCP Server（核心差异化）</h4>
+    <ul style="padding-left:20px;margin-bottom:12px;">
+      <li>启用后，AgentVille 自动暴露标准 MCP endpoint</li>
+      <li>提供一键复制的 Claude Code / Codex 配置片段</li>
+      <li>调用时强制鉴权（API Key 或 OAuth）</li>
+    </ul>
+
+    <h3>7.5 治理</h3>
+    <h4>预算与配额</h4>
+    <ul style="padding-left:20px;margin-bottom:12px;">
+      <li>三层预算：组织 / 团队 / 单任务</li>
+      <li>软预算（warn）+ 硬预算（block）</li>
+    </ul>
+    <h4>RBAC</h4>
+    <ul style="padding-left:20px;margin-bottom:12px;">
+      <li>角色：Owner / Admin / Member / Viewer</li>
+      <li>资源粒度：组织 / 团队 / 任务 / 集成</li>
+    </ul>
+  </div>
+
+  <!-- 8. UI/UX 设计原则 -->
+  <div class="section" id="sec8">
+    <div class="section-header">
+      <span class="section-number">8</span>
+      <h2>UI / UX 设计原则</h2>
+    </div>
+    <ol style="padding-left:20px;">
+      <li style="padding:6px 0;"><strong>双视图并存</strong> — 默认 Office，一键切 Graph</li>
+      <li style="padding:6px 0;"><strong>AI 员工有人格</strong> — 名字、头像、性格、对话气泡有情绪</li>
+      <li style="padding:6px 0;"><strong>任务永远透明</strong> — 任意时刻都知道"现在哪个 Agent 在做什么"</li>
+      <li style="padding:6px 0;"><strong>进度感清晰</strong> — 长任务显示进度阶段、预估剩余时间、当前花费</li>
+      <li style="padding:6px 0;"><strong>干预要简单</strong> — 暂停、继续、注入指令、取消，三步以内可达</li>
+      <li style="padding:6px 0;"><strong>错误要友好</strong> — Agent 失败要给出"为什么 + 建议"</li>
+      <li style="padding:6px 0;"><strong>空状态有引导</strong> — 没团队？引导建团队。没任务？引导派活。</li>
+      <li style="padding:6px 0;"><strong>键盘友好</strong> — 派活、切换 Team、查任务都有快捷键</li>
+      <li style="padding:6px 0;"><strong>可观测优先</strong> — 即便牺牲一点"萌"也要保证可调试</li>
+      <li style="padding:6px 0;"><strong>国际化与隐私优先</strong> — 默认不外发数据，可选自建 LLM 后端</li>
+    </ol>
+  </div>
+
+  <!-- 9. 衡量指标 -->
+  <div class="section" id="sec9">
+    <div class="section-header">
+      <span class="section-number">9</span>
+      <h2>衡量指标</h2>
+    </div>
+    <h3>9.1 北极星指标</h3>
+    <div class="vision-card" style="background:linear-gradient(135deg,#fef3c7,#fde68a);border-color:#f59e0b;">
+      <div class="quote" style="font-size:24px;">⭐ Weekly Active Tasks（WAT）</div>
+      <div class="desc">周内被实际派发并完成的任务数。直接反映"产品是否在解决真实问题"。</div>
+    </div>
+
+    <h3>9.2 核心指标</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>维度</th><th>指标</th><th>目标（V1 上线 3 个月）</th></tr></thead>
+        <tbody>
+          <tr><td>激活</td><td>首次任务完成率</td><td>≥ 60%</td></tr>
+          <tr><td>激活</td><td>TTV（从注册到第一个产物）</td><td>≤ 10 min</td></tr>
+          <tr><td>留存</td><td>次周留存 / 4 周留存</td><td>≥ 40% / ≥ 20%</td></tr>
+          <tr><td>使用深度</td><td>人均周派活数</td><td>≥ 5</td></tr>
+          <tr><td>集成</td><td>MCP 接入率</td><td>≥ 30%</td></tr>
+          <tr><td>集成</td><td>外部派活占比</td><td>≥ 25%</td></tr>
+          <tr><td>质量</td><td>任务成功率</td><td>≥ 80%</td></tr>
+          <tr><td>质量</td><td>用户主动取消率</td><td>≤ 10%</td></tr>
+          <tr><td>NPS</td><td>月度 NPS</td><td>≥ 30</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 10. 商业模式 -->
+  <div class="section" id="sec10">
+    <div class="section-header">
+      <span class="section-number">10</span>
+      <h2>商业模式（早期假设）</h2>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>套餐</th><th>定价</th><th>适合</th><th>包含</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Free</strong></td><td>$0</td><td>体验</td><td>1 团队 / 3 员工 / 50 任务每月 / 自带 API key</td></tr>
+          <tr><td><strong>Pro</strong></td><td>$20/月</td><td>个人深度用户</td><td>5 团队 / 20 员工 / 1000 任务 / 内置 token 包 / MCP Server</td></tr>
+          <tr><td><strong>Team</strong></td><td>$80/座位/月</td><td>小团队</td><td>不限团队 / 不限员工 / SSO / 审计日志 / A2A</td></tr>
+          <tr><td><strong>Enterprise</strong></td><td>定制</td><td>大型组织</td><td>私有部署 / VPC / 自建模型接入 / SLA</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 11. 风险与缓解 -->
+  <div class="section" id="sec11">
+    <div class="section-header">
+      <span class="section-number">11</span>
+      <h2>风险与缓解</h2>
+    </div>
+    <div class="risk-grid">
+      <div class="risk-card">
+        <span class="risk-label">⚠️ 成本风险</span>
+        <h4>多 Agent token 成本指数级膨胀</h4>
+        <p>影响：用户用不起</p>
+        <span class="mit-label">✅ 缓解</span>
+        <p>Cost View + 模型分级 + 预算硬上限 + 摘要压缩</p>
+      </div>
+      <div class="risk-card">
+        <span class="risk-label">⚠️ 质量风险</span>
+        <h4>任务质量不稳定（同任务结果差异大）</h4>
+        <p>影响：信任崩塌</p>
+        <span class="mit-label">✅ 缓解</span>
+        <p>模板化 Team + 提示词版本管理 + 回放与对比</p>
+      </div>
+      <div class="risk-card">
+        <span class="risk-label">⚠️ 产品风险</span>
+        <h4>可视化喧宾夺主</h4>
+        <p>影响：看着热闹用着废</p>
+        <span class="mit-label">✅ 缓解</span>
+        <p>双视图严格分工 + 默认任务详情页优先信息密度</p>
+      </div>
+      <div class="risk-card">
+        <span class="risk-label">⚠️ 技术风险</span>
+        <h4>MCP / A2A 协议演进快</h4>
+        <p>影响：集成易碎</p>
+        <span class="mit-label">✅ 缓解</span>
+        <p>协议层独立抽象，对外保持稳定 contract</p>
+      </div>
+      <div class="risk-card">
+        <span class="risk-label">⚠️ 开发风险</span>
+        <h4>Rust 开发慢，迭代不过竞品</h4>
+        <p>影响：错过窗口</p>
+        <span class="mit-label">✅ 缓解</span>
+        <p>Prompt 外置热更新 + Mock 测试 + 双周 release</p>
+      </div>
+      <div class="risk-card">
+        <span class="risk-label">⚠️ 安全风险</span>
+        <h4>Agent 误调危险工具</h4>
+        <p>影响：数据/资金损失</p>
+        <span class="mit-label">✅ 缓解</span>
+        <p>危险工具白名单 + 二次确认 + 沙箱执行 + 审计</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 12. 里程碑 -->
+  <div class="section" id="sec12">
+    <div class="section-header">
+      <span class="section-number">12</span>
+      <h2>里程碑</h2>
+    </div>
+    <div class="milestone-timeline">
+      <div class="milestone-item">
+        <span class="tag-phase phase-m0">M0 · MVP · 第 8 周</span>
+        <h4>内测可用</h4>
+        <ul>
+          <li>单 Agent + Team（≤5 人）跑通</li>
+          <li>节点图视图</li>
+          <li>MCP Server 可用（暴露给 Claude Code）</li>
+          <li>5 个团队模板</li>
+          <li>邀请制内测，目标 20 个早期用户</li>
+        </ul>
+      </div>
+      <div class="milestone-item">
+        <span class="tag-phase phase-m1">M1 · V1 · 第 16 周</span>
+        <h4>公开 Beta</h4>
+        <ul>
+          <li>Office View 上线（2D 办公室）</li>
+          <li>外部 Agent（Claude Code）入职</li>
+          <li>多 Team + Leader 间通信</li>
+          <li>Cost View + 预算管理</li>
+          <li>历史回放</li>
+          <li>目标 1000 注册用户、200 周活</li>
+        </ul>
+      </div>
+      <div class="milestone-item">
+        <span class="tag-phase phase-m2">M2 · V1.5 · 第 24 周</span>
+        <h4>正式版</h4>
+        <ul>
+          <li>A2A 互通</li>
+          <li>团队模板市场（社区贡献）</li>
+          <li>Pro 套餐上线</li>
+          <li>完整审计与 RBAC</li>
+        </ul>
+      </div>
+      <div class="milestone-item">
+        <span class="tag-phase phase-m3">M3 · V2 · 第 36 周</span>
+        <h4>进阶版</h4>
+        <ul>
+          <li>Agent Persona 自定义系统</li>
+          <li>3D 办公室视图（可选）</li>
+          <li>企业版与私有部署</li>
+          <li>团队协作 Workflow</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- 13. 开放问题 -->
+  <div class="section" id="sec13">
+    <div class="section-header">
+      <span class="section-number">13</span>
+      <h2>开放问题（待评审决策）</h2>
+    </div>
+    <ol class="question-list">
+      <li><strong>1.</strong> 首版是否提供托管 LLM？还是强制用户自带 key？</li>
+      <li><strong>2.</strong> 办公室视觉风格：像素风 / 扁平卡通 / Sims 风？需要设计验证</li>
+      <li><strong>3.</strong> Leader 失败时是否允许人类直接接管（"代理 Leader"模式）？</li>
+      <li><strong>4.</strong> Team 模板市场：UGC 还是官方策展优先？</li>
+      <li><strong>5.</strong> 是否做移动端？还是 Web 优先，移动端只做观察与通知？</li>
+      <li><strong>6.</strong> 数据驻留：是否提供区域选择（CN / SG / US）？</li>
+      <li><strong>7.</strong> 与现有协作工具的关系：是否优先集成飞书 / Slack / Notion？</li>
+      <li><strong>8.</strong> AI 员工"情绪"系统：V1 必做还是 V2 锦上添花？</li>
+    </ol>
+  </div>
+
+  <!-- 14. 附录 -->
+  <div class="section" id="sec14">
+    <div class="section-header">
+      <span class="section-number">14</span>
+      <h2>附录</h2>
+    </div>
+    <h3>14.1 术语对照表（用户语 ↔ 技术语）</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>用户语</th><th>技术语</th></tr></thead>
+        <tbody>
+          <tr><td>员工</td><td>Agent</td></tr>
+          <tr><td>团队 / 部门</td><td>Team</td></tr>
+          <tr><td>团队负责人</td><td>Team Leader</td></tr>
+          <tr><td>办公室</td><td>Office View</td></tr>
+          <tr><td>派活</td><td>Submit Task</td></tr>
+          <tr><td>跑一次</td><td>Run</td></tr>
+          <tr><td>技能</td><td>Capability</td></tr>
+          <tr><td>工具</td><td>Tool</td></tr>
+          <tr><td>外包员工</td><td>External Agent Adapter</td></tr>
+          <tr><td>跨部门协作</td><td>Inter-team Communication (A2A)</td></tr>
+          <tr><td>团队共享文档</td><td>Team Scratchpad / Shared Memory</td></tr>
+          <tr><td>加薪 / 升级</td><td>切换更强 LLM Model</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>14.2 竞品参考</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>产品</th><th>形态</th><th>AgentVille 的差异化</th></tr></thead>
+        <tbody>
+          <tr><td>AutoGen / CrewAI</td><td>开发框架</td><td>我们是产品 + 可视化 + 可被外部调用</td></tr>
+          <tr><td>MetaGPT / ChatDev</td><td>固定流程的 SWE 团队</td><td>我们通用 + 可视化 + 用户可自组</td></tr>
+          <tr><td>Manus</td><td>通用 Agent，黑盒</td><td>我们组织化 + 透明可观察</td></tr>
+          <tr><td>Lindy / Relay</td><td>Workflow 编排</td><td>我们是 Agent 协作而非确定流程</td></tr>
+          <tr><td>Devin</td><td>单超级 Agent</td><td>我们是团队而非个人英雄</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div style="text-align:center;padding:40px 0 20px;border-top:1px solid var(--border);margin-top:20px;">
+    <p style="color:var(--text-muted);font-size:13px;">AgentVille PRD v0.1 · Draft · 产品 · 研发 · 设计 共同基线</p>
+  </div>
+
+</div>
+</body>
+</html>
