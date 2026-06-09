@@ -914,11 +914,13 @@ function App() {
           </section>
         )}
 
-        <div className={`heroWork ${hasConversation || activeView !== "home" ? "withMessages" : ""}`}>
+        <div
+          className={`heroWork ${hasConversation || activeView !== "home" ? "withMessages" : "emptyHome"}`}
+        >
           <section className="conversationPane">
             {(activeView !== "home" || !hasConversation) && (
               <div className="titleBlock">
-                {activeView === "home" && (
+                {activeView === "home" && hasConversation && (
                   <div className="productMark">
                     <Bot size={28} />
                     <span>Agent</span>
@@ -935,9 +937,6 @@ function App() {
                           ? "Kimi WebBridge"
                           : promptTitle}
                 </h1>
-                {activeView === "home" && !hasConversation && (
-                  <p>研究、邮件、文档、表格、自动化和跨应用流程，都可以从这里开始。</p>
-                )}
               </div>
             )}
 
@@ -1354,30 +1353,6 @@ function App() {
                   </a>
                 ))}
               </section>
-            )}
-
-            {activeView === "home" && !hasConversation && !isBooting && (
-              <div className="skillCards">
-                {skills.map((skill) => {
-                  const Icon = skillIcons[skill.id];
-                  return (
-                    <button
-                      className="skillCard"
-                      type="button"
-                      key={skill.id}
-                      onClick={() => connectSkill(skill.id, skill.title)}
-                    >
-                      <span className={`skillIcon ${skill.accent}`}>
-                        <Icon size={22} />
-                      </span>
-                      <strong>{skill.title}</strong>
-                      <small>
-                        {skill.connected ? "已连接，可以用于当前任务" : skill.description}
-                      </small>
-                    </button>
-                  );
-                })}
-              </div>
             )}
 
             {activeView === "home" && showProjectLoader && (

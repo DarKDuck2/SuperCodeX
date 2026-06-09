@@ -459,6 +459,13 @@ kbd {
   overflow: hidden;
 }
 
+.heroWork.emptyHome {
+  align-items: flex-start;
+  padding-top: clamp(96px, 15vh, 168px);
+  padding-left: clamp(24px, 7vw, 92px);
+  padding-right: clamp(24px, 7vw, 92px);
+}
+
 .heroWork.withMessages {
   align-items: stretch;
   padding: 8px 6px 8px 44px;
@@ -479,11 +486,27 @@ kbd {
   gap: 18px;
 }
 
+.heroWork.emptyHome .conversationPane {
+  width: min(980px, 100%);
+  height: auto;
+  gap: clamp(24px, 4vh, 42px);
+}
+
 .titleBlock {
   text-align: center;
   display: grid;
   justify-items: center;
   gap: 12px;
+}
+
+.heroWork.emptyHome .titleBlock {
+  gap: 0;
+}
+
+.heroWork.emptyHome h1 {
+  font-size: clamp(27px, 3vw, 36px);
+  font-weight: 420;
+  line-height: 1.12;
 }
 
 .heroWork.withMessages .titleBlock {
@@ -839,6 +862,17 @@ h1 {
     0 1px 2px rgba(31, 35, 40, 0.05);
 }
 
+.heroWork.emptyHome .taskComposer {
+  width: min(860px, 100%);
+  align-self: center;
+  margin-top: 0;
+  border-color: #d9dde2;
+  border-radius: 18px;
+  box-shadow:
+    0 14px 36px rgba(31, 35, 40, 0.08),
+    0 1px 2px rgba(31, 35, 40, 0.06);
+}
+
 .hiddenFileInput {
   display: none;
 }
@@ -931,6 +965,12 @@ h1 {
   line-height: 1.55;
 }
 
+.heroWork.emptyHome .taskComposer textarea {
+  min-height: 78px;
+  padding: 16px 20px 6px;
+  font-size: 15px;
+}
+
 .taskComposer textarea::placeholder {
   color: #9aa0a6;
 }
@@ -940,6 +980,31 @@ h1 {
   justify-content: space-between;
   gap: 14px;
   padding: 0 12px 10px;
+}
+
+.heroWork.emptyHome .composerBar {
+  min-height: 50px;
+  padding: 0 12px 10px;
+}
+
+.heroWork.emptyHome .roundButton,
+.heroWork.emptyHome .micButton,
+.heroWork.emptyHome .submitButton {
+  width: 40px;
+  height: 40px;
+}
+
+.heroWork.emptyHome .permissionButton,
+.heroWork.emptyHome .textButton,
+.heroWork.emptyHome .agentToggle {
+  min-height: 36px;
+  font-size: 14px;
+  padding: 0 11px;
+}
+
+.heroWork.emptyHome .contextBar button {
+  min-height: 32px;
+  font-size: 14px;
 }
 
 .leftControls,
@@ -1078,6 +1143,12 @@ h1 {
   background: #f6f7f9;
   border-top: 1px solid #edf0f3;
   flex-wrap: wrap;
+}
+
+.heroWork.emptyHome .contextBar {
+  min-height: 48px;
+  padding: 0 18px;
+  background: #f7f8fa;
 }
 
 .contextBar button {
@@ -1911,6 +1982,19 @@ h1 {
   .heroWork,
   .heroWork.withMessages {
     padding: 20px 14px 36px;
+  }
+
+  .heroWork.emptyHome {
+    padding: 64px 14px 36px;
+  }
+
+  .heroWork.emptyHome .conversationPane {
+    gap: 22px;
+  }
+
+  .heroWork.emptyHome .taskComposer textarea {
+    min-height: 76px;
+    font-size: 15px;
   }
 
   .conversationPane {
