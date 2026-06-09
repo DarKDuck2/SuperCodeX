@@ -6,7 +6,8 @@ import {
   ChevronDown,
   CircleDot,
   Clipboard,
-  Download,
+  ExternalLink,
+  FileCode,
   FileText,
   Folder,
   Globe2,
@@ -20,19 +21,21 @@ import {
   Paperclip,
   PenLine,
   Plus,
+  Presentation,
   Search,
   Send,
   Settings2,
   ShieldCheck,
   Slack,
   Sparkles,
+  Table2,
   Trash2,
-  UserRound,
   X,
   Wrench,
   Workflow
 } from "lucide-react";
 import { ClipboardEvent, FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { readSseStream } from "./lib/stream";
 
 type Role = "system" | "user" | "assistant" | "tool";
 
@@ -187,8 +190,13 @@ type Artifact = {
   title: string;
   description: string;
   href: string;
-  kind: "image" | "file";
+  kind: "image" | "file" | "code" | "presentation" | "table";
+  filePath?: string;
 };
+
+type MessageDisplayItem =
+  | { type: "message"; message: Message }
+  | { type: "toolRound"; id: string; assistant?: Message; toolResults: ToolMessage[] };
 
 const defaultSettings: ApiSettings = {
   baseUrl: "https://api.openai.com/v1",
@@ -270,7 +278,7 @@ function App() {
     [hasConversation]
   );
   const visibleProjectTree = useMemo(() => flattenProjectTree(projectTree).slice(0, 10), [projectTree]);
-  const artifacts = useMemo(() => extractArtifacts(messages), [messages]);
+  const artifacts = useMemo(() => extractArtifacts(messages, activeProject?.id), [activeProject?.id, messages]);
   const selectedAutomation = useMemo(
     () =>
       automations.find((automation) => automation.id === selectedAutomationId) ??
@@ -469,7 +477,7 @@ function App() {
         const payload = await response.json().catch(() => ({ error: "请求失败" }));
         throw new Error(payload.error ?? "请求失败");
       }
-      await readAgentStream(response, pendingId);
+      await readSseStream<AgentStreamEvent>(response, (event) => handleAgentEvent(event, pendingId));
       await syncAppState();
       setActiveConversationId(conversationId);
     } catch (error) {
@@ -497,29 +505,6 @@ function App() {
 
   function stopAgentRun() {
     activeRequestRef.current?.abort();
-  }
-
-  async function readAgentStream(response: Response, pendingId: string) {
-    const reader = response.body!.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const chunks = buffer.split("\n\n");
-      buffer = chunks.pop() || "";
-
-      for (const chunk of chunks) {
-        const line = chunk
-          .split("\n")
-          .find((part) => part.startsWith("data:"))
-          ?.replace(/^data:\s*/, "");
-        if (!line || line === "[DONE]") continue;
-        handleAgentEvent(JSON.parse(line) as AgentStreamEvent, pendingId);
-      }
-    }
   }
 
   function handleAgentEvent(event: AgentStreamEvent, pendingId: string) {
@@ -739,6 +724,26 @@ function App() {
       setAppError(error instanceof Error ? error.message : "附件上传失败");
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function openArtifact(artifact: Artifact, action: "open" | "reveal" = "open") {
+    if (!artifact.filePath || !activeProject?.id) {
+      if (artifact.href && artifact.href !== "#") window.open(artifact.href, "_blank", "noreferrer");
+      return;
+    }
+
+    try {
+      setAppError("");
+      const response = await fetch(`/api/projects/${activeProject.id}/files/open`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: artifact.filePath, action })
+      });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "打开文件失败");
+    } catch (error) {
+      setAppError(error instanceof Error ? error.message : "打开文件失败");
     }
   }
 
@@ -1257,55 +1262,88 @@ function App() {
 
             {activeView === "home" && hasConversation && (
               <div className="messageStack" ref={messageStackRef}>
-                {messages.map((message) => {
-                  if (message.role === "tool") {
+                {buildMessageDisplayItems(messages).map((item) => {
+                  if (item.type === "toolRound") {
+                    const toolCalls = item.assistant?.tool_calls || [];
+                    const visibleContent = cleanAssistantContent(item.assistant?.content || "");
                     return (
-                      <article className="taskStepCard" key={message.id}>
-                        <div className="stepDot done">
-                          <Check size={14} />
+                      <article className="toolTimelineItem" key={item.id}>
+                        <div className="toolTimelineRail">
+                          <span className={`toolTimelineIcon ${item.toolResults.length ? "done" : "pending"}`}>
+                            {item.toolResults.length ? <Check size={15} /> : <Wrench size={15} />}
+                          </span>
                         </div>
-                        <div className="stepBody">
-                          <div className="stepHeader">
-                            <strong>{getToolSummary(message)}</strong>
-                            <span>{message.toolName || "tool"}</span>
-                          </div>
-                          <details>
-                            <summary>查看工具结果</summary>
-                            <pre className="toolContent">{message.content}</pre>
+                        <div className="toolTimelineBody">
+                          {visibleContent && (
+                            <div className="assistantText beforeToolCall">
+                              {item.assistant?.status === "thinking" && <div className="inlineStatus">working</div>}
+                              {renderRichText(visibleContent)}
+                            </div>
+                          )}
+                          <details className="toolRoundDetails">
+                            <summary className="toolTimelineSummary">
+                              <span>{getToolRoundSummary(toolCalls, item.toolResults)}</span>
+                              <ChevronDown size={16} />
+                            </summary>
+                            <div className="toolRoundPayloads">
+                              {toolCalls.map((tc) => (
+                                <div className="toolPayloadCard" key={tc.id}>
+                                  <strong>Request</strong>
+                                  <pre className="toolContent">{formatToolRequest(tc)}</pre>
+                                </div>
+                              ))}
+                              {item.toolResults.map((result) => (
+                                <div className="toolPayloadCard" key={result.id}>
+                                  <strong>Response · {result.toolName || "tool"}</strong>
+                                  <pre className="toolContent">{formatToolResponse(result.content)}</pre>
+                                </div>
+                              ))}
+                            </div>
                           </details>
                         </div>
                       </article>
                     );
                   }
 
-                  const msg = message as Message;
-                  const hasToolCalls = msg.tool_calls && msg.tool_calls.length > 0;
+                  const msg = item.message;
+                  const visibleContent = cleanAssistantContent(msg.content);
+
+                  if (msg.role === "user") {
+                    return (
+                      <article className="message userMessage" key={msg.id}>
+                        <div className="userBubble">
+                          <p>{msg.content}</p>
+                          {msg.attachments && msg.attachments.length > 0 && (
+                            <div className="messageAttachments">
+                              {msg.attachments.map((attachment) => (
+                                <a
+                                  className="messageAttachment"
+                                  href={attachment.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  key={attachment.id}
+                                >
+                                  {attachment.kind === "image" ? <ImageIcon size={15} /> : <FileText size={15} />}
+                                  <span>{attachment.originalName}</span>
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  }
+
+                  if (!visibleContent && !msg.attachments?.length && !msg.status) {
+                    return null;
+                  }
 
                   return (
-                    <article className={`message ${msg.role}`} key={msg.id}>
-                      <div className="avatar">
-                        {msg.role === "user" ? <UserRound size={18} /> : <Bot size={18} />}
-                      </div>
-                      <div className="bubble">
+                    <article className="message assistantMessage" key={msg.id}>
+                      <div className="assistantText">
                         {msg.status === "thinking" && <div className="inlineStatus">working</div>}
                         {msg.status === "error" && <div className="inlineStatus errorText">error</div>}
-                        {hasToolCalls && (
-                          <div className="toolCalls taskStepList">
-                            {msg.tool_calls!.map((tc) => (
-                              <div className="toolCallItem taskStepInline" key={tc.id}>
-                                <span className="stepDot pending">
-                                  <Wrench size={13} />
-                                </span>
-                                <span>{getToolCallSummary(tc)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {msg.content && (
-                          <div className="richText">
-                            {msg.role === "assistant" ? renderRichText(msg.content) : <p>{msg.content}</p>}
-                          </div>
-                        )}
+                        {visibleContent && <div className="richText">{renderRichText(visibleContent)}</div>}
                         {msg.attachments && msg.attachments.length > 0 && (
                           <div className="messageAttachments">
                             {msg.attachments.map((attachment) => (
@@ -1332,25 +1370,29 @@ function App() {
             {activeView === "home" && artifacts.length > 0 && (
               <section className="artifactShelf" aria-label="任务产物">
                 {artifacts.map((artifact) => (
-                  <a
+                  <div
                     className="artifactCard"
-                    href={artifact.href}
-                    target={artifact.href === "#" ? undefined : "_blank"}
-                    rel="noreferrer"
                     key={artifact.id}
-                    onClick={(event) => {
-                      if (artifact.href === "#") event.preventDefault();
-                    }}
                   >
-                    <span className="artifactIcon">
-                      {artifact.kind === "image" ? <ImageIcon size={17} /> : <FileText size={17} />}
-                    </span>
-                    <span>
-                      <strong>{artifact.title}</strong>
-                      <small>{artifact.description}</small>
-                    </span>
-                    {artifact.href !== "#" ? <Download size={15} /> : <Clipboard size={15} />}
-                  </a>
+                    <button className="artifactMain" type="button" onClick={() => openArtifact(artifact)}>
+                      <span className="artifactIcon">
+                        {renderArtifactIcon(artifact)}
+                      </span>
+                      <span>
+                        <strong>{artifact.title}</strong>
+                        <small>{artifact.description}</small>
+                      </span>
+                    </button>
+                    <button
+                      className="artifactAction"
+                      type="button"
+                      title="在文件夹中显示"
+                      aria-label={`在文件夹中显示 ${artifact.title}`}
+                      onClick={() => openArtifact(artifact, "reveal")}
+                    >
+                      {artifact.filePath ? <Folder size={15} /> : <ExternalLink size={15} />}
+                    </button>
+                  </div>
                 ))}
               </section>
             )}
@@ -1785,7 +1827,73 @@ function getToolSummary(message: ToolMessage) {
   return "工具执行完成";
 }
 
-function extractArtifacts(messages: StoredMessage[]): Artifact[] {
+function buildMessageDisplayItems(messages: StoredMessage[]): MessageDisplayItem[] {
+  const items: MessageDisplayItem[] = [];
+  for (let index = 0; index < messages.length; index++) {
+    const message = messages[index];
+    if (message.role === "tool") {
+      items.push({ type: "toolRound", id: `tool-${message.id}`, toolResults: [message] });
+      continue;
+    }
+
+    if (message.role === "assistant" && message.tool_calls?.length) {
+      const toolResults: ToolMessage[] = [];
+      let nextIndex = index + 1;
+      while (nextIndex < messages.length && messages[nextIndex].role === "tool") {
+        toolResults.push(messages[nextIndex] as ToolMessage);
+        nextIndex++;
+      }
+      items.push({
+        type: "toolRound",
+        id: message.id,
+        assistant: message,
+        toolResults
+      });
+      index = nextIndex - 1;
+      continue;
+    }
+
+    items.push({ type: "message", message });
+  }
+  return items;
+}
+
+function getToolRoundSummary(toolCalls: ToolCall[], toolResults: ToolMessage[]) {
+  const names = [...toolCalls.map((toolCall) => toolCall.function.name), ...toolResults.map((result) => result.toolName)]
+    .filter((name): name is string => Boolean(name));
+  const toolCount = new Set(names).size || toolCalls.length || toolResults.length;
+  const commandCount =
+    toolCalls.filter((toolCall) => toolCall.function.name === "run_command").length ||
+    toolResults.filter((result) => result.toolName === "run_command").length;
+  const parts = [`使用了 ${toolCount} 个工具`];
+  if (commandCount > 0) parts.push(`运行 ${commandCount} 个命令`);
+  return parts.join("，");
+}
+
+function formatToolRequest(toolCall: ToolCall) {
+  try {
+    return JSON.stringify(JSON.parse(toolCall.function.arguments || "{}"), null, 2);
+  } catch {
+    return toolCall.function.arguments || "{}";
+  }
+}
+
+function formatToolResponse(content: string) {
+  try {
+    return JSON.stringify(JSON.parse(content), null, 2);
+  } catch {
+    return content;
+  }
+}
+
+function cleanAssistantContent(content: string) {
+  return content
+    .replace(/<｜｜DSML｜｜tool_calls>[\s\S]*?<\/｜｜DSML｜｜tool_calls>/g, "")
+    .replace(/<\|\|DSML\|\|tool_calls>[\s\S]*?<\/\|\|DSML\|\|tool_calls>/g, "")
+    .trim();
+}
+
+function extractArtifacts(messages: StoredMessage[], projectId?: string): Artifact[] {
   const artifacts = new Map<string, Artifact>();
   for (const message of messages) {
     if (message.role !== "tool") {
@@ -1812,18 +1920,48 @@ function extractArtifacts(messages: StoredMessage[]): Artifact[] {
       });
     }
 
-    const fileMatch = message.content.match(/(?:File written|Updated):\s*([^\n(]+)/);
-    if (fileMatch) {
-      artifacts.set(`${message.id}-file`, {
-        id: `${message.id}-file`,
-        title: fileMatch[1].trim(),
-        description: "项目文件产物",
-        href: "#",
-        kind: "file"
+    const fileMatches = [...message.content.matchAll(/^(?:File written|Updated|Generated file):\s*([^\n(]+)/gm)];
+    for (const [index, fileMatch] of fileMatches.entries()) {
+      const filePath = fileMatch[1].trim();
+      if (!filePath) continue;
+      artifacts.set(`${message.id}-file-${index}-${filePath}`, {
+        id: `${message.id}-file-${index}`,
+        title: filePath,
+        description: getArtifactDescription(filePath),
+        href: projectId ? `/api/projects/${projectId}/files/content?path=${encodeURIComponent(filePath)}` : "#",
+        kind: getArtifactKind(filePath),
+        filePath
       });
     }
   }
   return [...artifacts.values()].slice(-6);
+}
+
+function renderArtifactIcon(artifact: Artifact) {
+  if (artifact.kind === "image") return <ImageIcon size={17} />;
+  if (artifact.kind === "presentation") return <Presentation size={17} />;
+  if (artifact.kind === "code") return <FileCode size={17} />;
+  if (artifact.kind === "table") return <Table2 size={17} />;
+  return <FileText size={17} />;
+}
+
+function getArtifactKind(filePath: string): Artifact["kind"] {
+  const extension = filePath.split(".").pop()?.toLowerCase() || "";
+  if (["png", "jpg", "jpeg", "webp", "gif", "svg"].includes(extension)) return "image";
+  if (["ppt", "pptx"].includes(extension)) return "presentation";
+  if (["py", "js", "mjs", "ts", "tsx", "sh", "css", "json"].includes(extension)) return "code";
+  if (["csv", "xlsx", "xls"].includes(extension)) return "table";
+  return "file";
+}
+
+function getArtifactDescription(filePath: string) {
+  const extension = filePath.split(".").pop()?.toLowerCase() || "";
+  if (["ppt", "pptx"].includes(extension)) return `${extension.toUpperCase()} 演示文稿`;
+  if (["html", "htm"].includes(extension)) return "网页文件产物";
+  if (["png", "jpg", "jpeg", "webp", "gif"].includes(extension)) return "图片文件产物";
+  if (["csv", "xlsx", "xls"].includes(extension)) return "表格数据产物";
+  if (["py", "js", "mjs", "ts", "tsx", "sh"].includes(extension)) return `${extension.toUpperCase()} 脚本文件`;
+  return "项目文件产物";
 }
 
 function removeMessage(messages: StoredMessage[], id: string) {

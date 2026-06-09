@@ -1,7 +1,8 @@
 {
   "name": "super-codex",
   "version": "0.1.0",
-  "private": true,
+  "description": "A local-first general office agent workbench.",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:client\"",
@@ -10,10 +11,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "start": "node dist-server/index.js",
-    "reminder": "node scripts/reminder.mjs",
-    "reminder:stop": "launchctl unload ~/Library/LaunchAgents/com.supercodex.reminder.plist",
-    "reminder:start": "launchctl load ~/Library/LaunchAgents/com.supercodex.reminder.plist",
-    "reminder:status": "launchctl list | grep supercodex"
+    "test": "tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.4",
@@ -24,7 +22,6 @@
     "lucide-react": "^0.552.0",
     "multer": "^2.1.1",
     "nanoid": "^5.1.6",
-    "nodemailer": "^8.0.10",
     "open-websearch": "^2.1.11",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
