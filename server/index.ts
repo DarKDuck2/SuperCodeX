@@ -7,6 +7,10 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import sharp from "sharp";
+import { computeNextRunAt, normalizeScheduleText, parseAutomationInput } from "./automation/schedule.js";
+import { normalizeLocalPath, safeResolvePath, sanitizeFileName } from "./core/paths.js";
+import { assertCommandAllowed, getBlockedCommandReason } from "./core/security.js";
+import { normalizeWhitespace, stripAnsi, titleFromPrompt } from "./core/text.js";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -17,6 +21,7 @@ const dataDir = path.join(workspaceRoot, ".supercodex");
 const dataFile = path.join(dataDir, "state.json");
 const legacyUploadDir = path.join(dataDir, "uploads");
 const conversationsDir = path.join(dataDir, "conversations");
+const workspaceFilesDirName = "supercodex-files";
 const maxAgentTurns = 200;
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -227,25 +232,6 @@ const systemPrompt = [
   "When browser or web tools return HTML, DOM, or raw JSON, never echo it verbatim. Extract the useful facts, page title, visible text, links, and next actions instead."
 ].join(" ");
 
-const blockedCommandRules: Array<{ pattern: RegExp; reason: string }> = [
-  { pattern: /(^|[;&|]\s*)rm(\s|$)/, reason: "file deletion is disabled" },
-  { pattern: /\bfind\b[\s\S]*\s-delete(\s|$)/, reason: "find -delete is disabled" },
-  { pattern: /\btrash\b|\btrash-put\b|\bgio\s+trash\b/, reason: "moving files to trash is disabled" },
-  { pattern: /\bunlink\b/, reason: "unlink is disabled" },
-  { pattern: /\brmdir\b/, reason: "directory deletion is disabled" },
-  { pattern: /\brimraf\b/, reason: "recursive deletion is disabled" },
-  { pattern: /\bshred\b/, reason: "secure deletion is disabled" },
-  { pattern: /\bgit\s+reset\s+--hard\b/, reason: "destructive git reset is disabled" },
-  { pattern: /\bgit\s+clean\b/, reason: "git clean deletes untracked files and is disabled" },
-  { pattern: /\bgit\s+checkout\s+--\b/, reason: "discarding local changes is disabled" },
-  { pattern: /\bsudo\b|\bsu\s+-?\b|\bdoas\b/, reason: "privilege escalation is disabled" },
-  { pattern: />\s*\/dev\/(disk|rdisk|sda|nvme|mapper)\b/, reason: "writing to block devices is disabled" },
-  { pattern: /\bmkfs(?:\.[\w-]+)?\b|\bdiskutil\s+erase|\bformat\s+[a-z]:/i, reason: "disk formatting is disabled" },
-  { pattern: /\bdd\s+if=/, reason: "raw disk copy commands are disabled" },
-  { pattern: /\bchmod\s+-R\s+777\b|\bchown\s+-R\b/, reason: "broad permission changes are disabled" },
-  { pattern: /\bshutdown\b|\breboot\b|\bhalt\b|\bpoweroff\b/, reason: "system power commands are disabled" }
-];
-
 const projects = new Map<string, Project>();
 const conversations = new Map<string, Conversation>();
 const skills = new Map<string, Skill>();
@@ -257,6 +243,7 @@ const runningAutomations = new Set<string>();
 
 type ToolContext = {
   workspacePath: string;
+  outputPath: string;
   attachments: Attachment[];
 };
 
@@ -338,6 +325,65 @@ app.get("/api/projects/:id/tree", async (req, res) => {
 
   const depth = Number(req.query.depth ?? 2);
   res.json({ rootPath: project.rootPath, tree: await listProjectTree(project.rootPath, depth) });
+});
+
+app.get("/api/projects/:id/files/content", async (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) {
+    res.status(404).json({ error: "project not found" });
+    return;
+  }
+
+  const relativePath = String(req.query.path || "").trim();
+  if (!relativePath) {
+    res.status(400).json({ error: "path is required" });
+    return;
+  }
+
+  try {
+    const rootPath = project.rootPath || workspaceRoot;
+    const filePath = safeResolvePath(relativePath, rootPath);
+    const stat = await fs.stat(filePath);
+    if (!stat.isFile()) {
+      res.status(400).json({ error: "path must be a file" });
+      return;
+    }
+    const metadata = getFileResponseMetadata(filePath);
+    res.type(metadata.contentType);
+    res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(path.basename(filePath))}`);
+    res.sendFile(filePath);
+  } catch (error) {
+    res.status(404).json({ error: error instanceof Error ? error.message : "file not found" });
+  }
+});
+
+app.post("/api/projects/:id/files/open", async (req, res) => {
+  const project = projects.get(req.params.id);
+  if (!project) {
+    res.status(404).json({ error: "project not found" });
+    return;
+  }
+
+  const body = req.body as { path?: string; action?: "open" | "reveal" };
+  const relativePath = String(body.path || "").trim();
+  if (!relativePath) {
+    res.status(400).json({ error: "path is required" });
+    return;
+  }
+
+  try {
+    const rootPath = project.rootPath || workspaceRoot;
+    const filePath = safeResolvePath(relativePath, rootPath);
+    const stat = await fs.stat(filePath);
+    if (!stat.isFile()) {
+      res.status(400).json({ error: "path must be a file" });
+      return;
+    }
+    await openLocalFile(filePath, body.action === "reveal" ? "reveal" : "open");
+    res.json({ ok: true, path: filePath });
+  } catch (error) {
+    res.status(404).json({ error: error instanceof Error ? error.message : "file not found" });
+  }
 });
 
 app.post("/api/conversations", async (req, res) => {
@@ -711,7 +757,7 @@ app.post("/api/tools/run-command", async (req, res) => {
 
   try {
     const result = await execAsync(command, {
-      cwd: safeResolvePath(cwd || workspaceRoot),
+      cwd: safeResolvePath(cwd || ".", workspaceRoot),
       timeout: 20_000,
       maxBuffer: 1024 * 1024
     });
@@ -748,13 +794,21 @@ async function runAgentLoop(
   const conversationAttachments = getConversationAttachments(conversation.id);
   const context: ToolContext = {
     workspacePath: project?.rootPath || workspaceRoot,
+    outputPath: path.join(project?.rootPath || workspaceRoot, workspaceFilesDirName),
     attachments: conversationAttachments
   };
+  await fs.mkdir(context.outputPath, { recursive: true });
+  const outputRelativePath = path.relative(context.workspacePath, context.outputPath) || ".";
   const chatMessages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
     {
       role: "system",
-      content: `Current local project workspace: ${context.workspacePath}. File, search, coding, and test tools default to this workspace.`
+      content: [
+        `Current local project workspace: ${context.workspacePath}.`,
+        `Generated files directory: ${context.outputPath}.`,
+        `When the user does not specify an output path, save generated files, scripts, and intermediate outputs under ${outputRelativePath}.`,
+        "run_command without cwd runs in the generated files directory. Pass cwd explicitly when you need to run commands from the project root or a subdirectory."
+      ].join(" ")
     },
     {
       role: "system",
@@ -960,7 +1014,7 @@ function registerTools() {
       type: "function",
       function: {
         name: "write_file",
-        description: "Write a text file inside the workspace.",
+        description: "Write a text file inside the workspace. Bare file names are written to the generated files directory.",
         parameters: {
           type: "object",
           properties: {
@@ -972,10 +1026,10 @@ function registerTools() {
       }
     },
     async (args, context) => {
-      const filePath = safeResolvePath(String(args.path || ""), context.workspacePath);
+      const filePath = resolveGeneratedFilePath(String(args.path || ""), context);
       await fs.mkdir(path.dirname(filePath), { recursive: true });
       await fs.writeFile(filePath, String(args.content || ""), "utf-8");
-      return `File written: ${path.relative(workspaceRoot, filePath)}`;
+      return `File written: ${path.relative(context.workspacePath, filePath)}`;
     }
   );
 
@@ -984,7 +1038,7 @@ function registerTools() {
       type: "function",
       function: {
         name: "run_command",
-        description: "Run a safe shell command inside the workspace.",
+        description: "Run a safe shell command. If cwd is omitted, it runs in the generated files directory for scripts and intermediate outputs.",
         parameters: {
           type: "object",
           properties: {
@@ -998,12 +1052,17 @@ function registerTools() {
     async (args, context) => {
       const command = String(args.command || "");
       assertCommandAllowed(command);
+      const cwd = await resolveCommandCwd(args.cwd, context);
+      const beforeFiles = await snapshotGeneratedFiles(context.outputPath);
       const result = await execAsync(command, {
-        cwd: safeResolvePath(String(args.cwd || "."), context.workspacePath),
+        cwd,
         timeout: 30_000,
         maxBuffer: 1024 * 1024 * 5
       });
-      return [result.stdout, result.stderr].filter(Boolean).join("\n") || "(Command succeeded, no output)";
+      const generatedFiles = diffGeneratedFiles(beforeFiles, await snapshotGeneratedFiles(context.outputPath), context);
+      const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
+      const generatedOutput = generatedFiles.map((filePath) => `Generated file: ${filePath}`).join("\n");
+      return [output || "(Command succeeded, no output)", generatedOutput].filter(Boolean).join("\n");
     }
   );
 
@@ -1201,8 +1260,7 @@ function registerTools() {
       const outputName =
         sanitizeFileName(String(args.outputName || "")) ||
         `${path.parse(attachment.originalName).name}-edited.${format === "jpeg" ? "jpg" : format}`;
-      const conversation = conversations.get(attachment.conversationId);
-      const artifactDir = conversation ? path.join(getConversationDir(conversation), "artifacts") : path.dirname(attachment.path);
+      const artifactDir = context.outputPath;
       await fs.mkdir(artifactDir, { recursive: true });
       const outputPath = path.join(artifactDir, `${id("image")}-${outputName}`);
 
@@ -1503,101 +1561,6 @@ async function runAutomation(automation: Automation, trigger: AutomationRun["tri
   }
 }
 
-function parseAutomationInput(input: {
-  title?: string;
-  schedule?: string;
-  prompt?: string;
-  instruction?: string;
-}) {
-  const instruction = normalizeWhitespace(input.instruction || "");
-  const schedule = normalizeScheduleText(input.schedule || extractScheduleText(instruction));
-  const prompt = normalizeWhitespace(input.prompt || extractAutomationPrompt(instruction, schedule) || instruction || input.title || "执行这个定时任务。");
-  return {
-    title: normalizeWhitespace(input.title || titleFromPrompt(prompt || instruction || "新自动化")),
-    schedule: schedule || "手动触发",
-    prompt
-  };
-}
-
-function extractScheduleText(instruction: string) {
-  const interval = instruction.match(/每\s*(\d+)\s*(?:h|H|小时|个小时)/);
-  if (interval) return `每${interval[1]}小时`;
-  if (/每\s*(?:天|日)|每天|每日/.test(instruction)) {
-    const time = extractTimeOfDay(instruction);
-    if (time) return `每天 ${time}`;
-  }
-  if (/下班前|下班之前/.test(instruction)) return "每天 17:30";
-  const time = extractTimeOfDay(instruction);
-  return time ? `每天 ${time}` : "";
-}
-
-function extractAutomationPrompt(instruction: string, schedule: string) {
-  if (!instruction) return "";
-  let prompt = instruction;
-  prompt = prompt.replace(/每\s*(\d+)\s*(?:h|H|小时|个小时)/g, "");
-  prompt = prompt.replace(/每天|每日|每日上午|每天上午|每天早上|每天中午|每天下午|每天晚上|每天早晨|每天下午|每晚/g, "");
-  prompt = prompt.replace(/凌晨|早上|早晨|上午|中午|下午|晚上|晚间|夜里/g, "");
-  prompt = prompt.replace(/下班前|下班之前/g, "");
-  if (schedule) {
-    const time = schedule.match(/\d{1,2}:\d{2}/)?.[0];
-    if (time) {
-      const [hour, minute] = time.split(":").map(Number);
-      prompt = prompt
-        .replace(new RegExp(`${hour}\\s*[:：]\\s*${minute.toString().padStart(2, "0")}`), "")
-        .replace(new RegExp(`${hour}\\s*点\\s*${minute ? `${minute}\\s*分?` : ""}`), "");
-    }
-  }
-  return normalizeWhitespace(prompt.replace(/^(提醒|返回|推送|生成|完成)?/, "$1").replace(/[，,。；;]\s*$/, "")) || instruction;
-}
-
-function normalizeScheduleText(value: string) {
-  const text = normalizeWhitespace(value);
-  if (!text) return "";
-  const interval = text.match(/每\s*(\d+)\s*(?:h|H|小时|个小时)/);
-  if (interval) return `每${Math.max(1, Number(interval[1]))}小时`;
-  if (/下班前|下班之前/.test(text)) return "每天 17:30";
-  const time = extractTimeOfDay(text);
-  if (time) return `每天 ${time}`;
-  if (/手动/.test(text)) return "手动触发";
-  return text;
-}
-
-function extractTimeOfDay(text: string) {
-  const colon = text.match(/(\d{1,2})\s*[:：]\s*(\d{1,2})/);
-  if (colon) return formatTime(Number(colon[1]), Number(colon[2]));
-  const chinese = text.match(/(?:(凌晨|早上|早晨|上午|中午|下午|晚上|晚间|夜里)\s*)?(\d{1,2})\s*点(?:\s*(\d{1,2})\s*分?)?/);
-  if (!chinese) return "";
-  let hour = Number(chinese[2]);
-  const minute = Number(chinese[3] || 0);
-  const period = chinese[1] || "";
-  if ((period === "下午" || period === "晚上" || period === "晚间" || period === "夜里") && hour < 12) hour += 12;
-  if (period === "中午" && hour < 11) hour += 12;
-  return formatTime(hour, minute);
-}
-
-function formatTime(hour: number, minute: number) {
-  const safeHour = Math.max(0, Math.min(23, hour));
-  const safeMinute = Math.max(0, Math.min(59, minute));
-  return `${safeHour.toString().padStart(2, "0")}:${safeMinute.toString().padStart(2, "0")}`;
-}
-
-function computeNextRunAt(schedule: string, from = new Date()) {
-  const normalized = normalizeScheduleText(schedule);
-  if (!normalized || normalized === "手动触发") return undefined;
-  const interval = normalized.match(/^每(\d+)小时$/);
-  if (interval) {
-    return new Date(from.getTime() + Math.max(1, Number(interval[1])) * 60 * 60 * 1000).toISOString();
-  }
-  const daily = normalized.match(/^每天\s+(\d{1,2}):(\d{2})$/);
-  if (daily) {
-    const next = new Date(from);
-    next.setHours(Number(daily[1]), Number(daily[2]), 0, 0);
-    if (next.getTime() <= from.getTime()) next.setDate(next.getDate() + 1);
-    return next.toISOString();
-  }
-  return undefined;
-}
-
 function createAutomationConversation(title: string) {
   const project = [...projects.values()][0] || createProject("SuperCodex");
   return createConversation(project.id, `自动化：${title}`);
@@ -1838,7 +1801,8 @@ async function saveGeneratedTextAttachment(conversationId: string, originalName:
   if (!conversation) throw new Error("conversation not found");
   const safeName = sanitizeFileName(originalName || "automation-result.md");
   const fileId = id("attachment");
-  const artifactDir = path.join(getConversationDir(conversation), "artifacts");
+  const project = projects.get(conversation.projectId);
+  const artifactDir = path.join(project?.rootPath || workspaceRoot, workspaceFilesDirName);
   await fs.mkdir(artifactDir, { recursive: true });
   const filePath = path.join(artifactDir, `${fileId}-${safeName}`);
   await fs.writeFile(filePath, content, "utf-8");
@@ -1857,6 +1821,126 @@ async function saveGeneratedTextAttachment(conversationId: string, originalName:
   };
   attachments.set(attachment.id, attachment);
   return attachment;
+}
+
+function resolveGeneratedFilePath(inputPath: string, context: ToolContext) {
+  const trimmedPath = inputPath.trim();
+  const requestedPath = trimmedPath || `artifact-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`;
+  const normalized = requestedPath.replace(/\\/g, "/");
+  const hasExplicitDirectory = normalized.includes("/");
+  const basePath = hasExplicitDirectory || path.isAbsolute(requestedPath) ? context.workspacePath : context.outputPath;
+  return safeResolvePath(requestedPath, basePath);
+}
+
+async function resolveCommandCwd(cwd: unknown, context: ToolContext) {
+  const rawCwd = typeof cwd === "string" ? cwd.trim() : "";
+  if (rawCwd) return safeResolvePath(rawCwd, context.workspacePath);
+  await fs.mkdir(context.outputPath, { recursive: true });
+  return context.outputPath;
+}
+
+type GeneratedFileSnapshot = Map<string, { mtimeMs: number; size: number }>;
+
+async function snapshotGeneratedFiles(rootPath: string): Promise<GeneratedFileSnapshot> {
+  const snapshot: GeneratedFileSnapshot = new Map();
+  const ignored = new Set(["node_modules", ".git", ".supercodex", "dist", "dist-server"]);
+
+  async function walk(currentPath: string, depth: number) {
+    if (depth > 6 || snapshot.size > 2000) return;
+    let entries: Array<import("node:fs").Dirent>;
+    try {
+      entries = await fs.readdir(currentPath, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (ignored.has(entry.name)) continue;
+      const entryPath = path.join(currentPath, entry.name);
+      if (entry.isDirectory()) {
+        await walk(entryPath, depth + 1);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      try {
+        const stat = await fs.stat(entryPath);
+        snapshot.set(entryPath, { mtimeMs: stat.mtimeMs, size: stat.size });
+      } catch {
+        // Files can disappear while a command is still settling.
+      }
+    }
+  }
+
+  await walk(rootPath, 0);
+  return snapshot;
+}
+
+function diffGeneratedFiles(
+  before: GeneratedFileSnapshot,
+  after: GeneratedFileSnapshot,
+  context: ToolContext
+) {
+  return [...after.entries()]
+    .filter(([filePath, meta]) => {
+      const previous = before.get(filePath);
+      return !previous || previous.size !== meta.size || meta.mtimeMs > previous.mtimeMs + 1;
+    })
+    .map(([filePath]) => path.relative(context.workspacePath, filePath))
+    .filter((filePath) => filePath && !filePath.startsWith(".."))
+    .sort();
+}
+
+function getFileResponseMetadata(filePath: string) {
+  const extension = path.extname(filePath).toLowerCase();
+  const contentTypes: Record<string, string> = {
+    ".html": "text/html; charset=utf-8",
+    ".htm": "text/html; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8",
+    ".txt": "text/plain; charset=utf-8",
+    ".py": "text/x-python; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".ts": "text/plain; charset=utf-8",
+    ".tsx": "text/plain; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".csv": "text/csv; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".pdf": "application/pdf",
+    ".ppt": "application/vnd.ms-powerpoint",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xls": "application/vnd.ms-excel",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  };
+
+  return {
+    contentType: contentTypes[extension] || "application/octet-stream"
+  };
+}
+
+async function openLocalFile(filePath: string, action: "open" | "reveal") {
+  if (process.platform === "darwin") {
+    await execFileAsync("open", action === "reveal" ? ["-R", filePath] : [filePath]);
+    return;
+  }
+
+  if (process.platform === "win32") {
+    if (action === "reveal") {
+      await execFileAsync("explorer.exe", [`/select,${filePath}`]);
+      return;
+    }
+    await execFileAsync("explorer.exe", [filePath]);
+    return;
+  }
+
+  await execFileAsync("xdg-open", [action === "reveal" ? path.dirname(filePath) : filePath]);
 }
 
 function publicAttachment(attachment: Attachment) {
@@ -1986,7 +2070,7 @@ function ensureSeedSkills() {
   const existing = new Map(skills);
   [
     ["messages", "连接消息传送", "从团队讨论中获取背景信息", "slack", "@slack/web-api"],
-    ["email", "连接电子邮件", "总结邮件、起草回复和跟进请求", "mail", "nodemailer"],
+    ["email", "连接电子邮件", "总结邮件、起草回复和跟进请求", "mail", ""],
     ["files", "连接文件", "审查报告、研究资料和计划", "drive", "@googleapis/drive"],
     ["webbridge", "Kimi WebBridge", "控制真实浏览器、读取网页、截图和跨站操作", "webbridge", ""]
   ].forEach(([skillId, title, description, accent, npmPackage]) => {
@@ -2068,23 +2152,6 @@ function toChatMessage(message: StoredMessage): ChatMessage {
   };
 }
 
-function safeResolvePath(inputPath: string, basePath = workspaceRoot) {
-  const base = path.resolve(basePath);
-  const resolved = path.resolve(base, inputPath || ".");
-  if (resolved !== base && !resolved.startsWith(`${base}${path.sep}`)) {
-    throw new Error(`Path is outside workspace: ${inputPath}`);
-  }
-  return resolved;
-}
-
-function sanitizeFileName(value: string) {
-  return path
-    .basename(value)
-    .replace(/[^\p{L}\p{N}_.-]+/gu, "_")
-    .replace(/^_+/, "")
-    .slice(0, 160) || "attachment";
-}
-
 function inferAttachmentKind(mimeType: string, fileName: string): Attachment["kind"] {
   if (mimeType.startsWith("image/")) return "image";
   if (mimeType.startsWith("text/")) return "text";
@@ -2098,15 +2165,6 @@ function normalizeImageFormat(value: string): "png" | "jpeg" | "webp" {
   const normalized = value.toLowerCase().replace("jpg", "jpeg");
   if (normalized === "png" || normalized === "jpeg" || normalized === "webp") return normalized;
   return "png";
-}
-
-function normalizeLocalPath(inputPath: string) {
-  const home = process.env.HOME || "";
-  const expanded =
-    inputPath === "~" || inputPath.startsWith(`~${path.sep}`)
-      ? path.join(home, inputPath.slice(2))
-      : inputPath;
-  return path.resolve(expanded);
 }
 
 async function inferTestCommand(projectPath: string) {
@@ -2123,18 +2181,6 @@ async function inferTestCommand(projectPath: string) {
     // Non-JavaScript projects can provide an explicit command.
   }
   return "npm run build";
-}
-
-function assertCommandAllowed(command: string) {
-  const blocked = getBlockedCommandReason(command);
-  if (blocked) {
-    throw new Error(`Command blocked by SuperCodex automatic safety policy (${blocked}): ${command}`);
-  }
-}
-
-function getBlockedCommandReason(command: string) {
-  const normalized = command.replace(/\\\n/g, " ").replace(/\s+/g, " ").trim();
-  return blockedCommandRules.find((rule) => rule.pattern.test(normalized))?.reason || "";
 }
 
 async function getWebBridgeStatus() {
@@ -2273,15 +2319,6 @@ function compactJsonText(text: string, limit: number) {
   }
 }
 
-function normalizeWhitespace(text: string) {
-  return text
-    .replace(/\r/g, "\n")
-    .replace(/[ \t\f\v]+/g, " ")
-    .replace(/\n\s+/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
 function decodeHtmlEntities(text: string) {
   const entities: Record<string, string> = {
     amp: "&",
@@ -2298,10 +2335,6 @@ function decodeHtmlEntities(text: string) {
     }
     return entities[entity.toLowerCase()] ?? full;
   });
-}
-
-function stripAnsi(text: string) {
-  return text.replace(/\u001b\[[0-9;]*m/g, "");
 }
 
 async function openWebSearch(query: string, limit: number): Promise<WebSearchPayload> {
@@ -2348,10 +2381,6 @@ function fallbackOfficeReply(messages: ChatMessage[]) {
     "3. 提炼结论、风险和下一步行动。",
     "4. 生成可复用的回复、报告、清单或自动化流程。"
   ].join("\n");
-}
-
-function titleFromPrompt(prompt: string) {
-  return prompt.length > 22 ? `${prompt.slice(0, 22)}...` : prompt;
 }
 
 function maskSettings() {
