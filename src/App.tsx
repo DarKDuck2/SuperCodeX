@@ -88,12 +88,16 @@ type ConversationSummary = {
 };
 
 type Skill = {
-  id: "messages" | "email" | "files" | "webbridge";
+  id: string;
   title: string;
   description: string;
-  accent: "slack" | "mail" | "drive" | "webbridge";
+  accent: string;
   connected: boolean;
   installed?: boolean;
+  source?: "builtin" | "user" | "discovered";
+  categories?: string[];
+  keywords?: string[];
+  toolNames?: string[];
 };
 
 type AppState = {
@@ -194,9 +198,14 @@ type Artifact = {
   filePath?: string;
 };
 
+type ToolRound = {
+  assistant?: Message;
+  toolResults: ToolMessage[];
+};
+
 type MessageDisplayItem =
   | { type: "message"; message: Message }
-  | { type: "toolRound"; id: string; assistant?: Message; toolResults: ToolMessage[] };
+  | { type: "toolRound"; id: string; rounds: ToolRound[] };
 
 const defaultSettings: ApiSettings = {
   baseUrl: "https://api.openai.com/v1",
@@ -204,10 +213,17 @@ const defaultSettings: ApiSettings = {
   model: "gpt-4.1"
 };
 
-const skillIcons = {
+const skillIcons: Record<string, typeof Slack> = {
   messages: Slack,
   email: Mail,
   files: FileText,
+  academic: Sparkles,
+  slides: Presentation,
+  pdf: FileText,
+  search: Search,
+  html: FileCode,
+  excel: Table2,
+  documents: PenLine,
   webbridge: Globe2
 };
 
@@ -238,6 +254,7 @@ function App() {
   const [selectedAutomationId, setSelectedAutomationId] = useState("");
   const [showAutomationDialog, setShowAutomationDialog] = useState(false);
   const [automationInstruction, setAutomationInstruction] = useState("");
+  const [customSkillPath, setCustomSkillPath] = useState("");
   const [automationPreview, setAutomationPreview] = useState<AutomationPreview | null>(null);
   const [isEditingAutomation, setIsEditingAutomation] = useState(false);
   const [automationDraft, setAutomationDraft] = useState({ title: "", schedule: "", prompt: "" });
@@ -454,7 +471,7 @@ function App() {
         role: "assistant",
         status: "thinking",
         createdAt: new Date().toISOString(),
-        content: "Agent 正在思考并调用工具..."
+        content: "正在理解你的请求，整理下一步。"
       }
     ]);
     setIsWorking(true);
@@ -558,6 +575,28 @@ function App() {
       current.map((skill) => (skill.id === skillId ? { ...skill, connected: true } : skill))
     );
     useSkillPrompt(title);
+  }
+
+  async function loadCustomSkill(event: FormEvent) {
+    event.preventDefault();
+    const path = customSkillPath.trim();
+    if (!path) return;
+    const response = await fetch("/api/skills/load", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path, connect: true })
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      setAppError(payload.error || "加载 skill 失败");
+      return;
+    }
+    setSkills((current) => {
+      const next = current.filter((skill) => skill.id !== payload.skill.id);
+      return [...next, payload.skill];
+    });
+    setCustomSkillPath("");
+    useSkillPrompt(payload.skill.title);
   }
 
   function createAutomation() {
@@ -977,31 +1016,45 @@ function App() {
             )}
 
             {activeView === "skills" && (
-              <div className="skillCards alwaysVisible">
-                {skills.map((skill) => {
-                  const Icon = skillIcons[skill.id];
-                  return (
-                    <button
-                      className="skillCard"
-                      type="button"
-                      key={skill.id}
-                      onClick={() => connectSkill(skill.id, skill.title)}
-                    >
-                      <span className={`skillIcon ${skill.accent}`}>
-                        <Icon size={22} />
-                      </span>
-                      <strong>{skill.title}</strong>
-                      <small>
-                        {skill.connected
-                          ? "已连接，可以用于当前任务"
-                          : skill.installed
-                            ? `${skill.description}，已安装`
-                            : skill.description}
-                      </small>
-                    </button>
-                  );
-                })}
-              </div>
+              <>
+                <form className="skillLoader" onSubmit={loadCustomSkill}>
+                  <Plus size={17} />
+                  <input
+                    value={customSkillPath}
+                    onChange={(event) => setCustomSkillPath(event.target.value)}
+                    placeholder="加载本地 skill 目录、SKILL.md 或 manifest 路径"
+                  />
+                  <button type="submit">加载</button>
+                </form>
+                <div className="skillCards alwaysVisible">
+                  {skills.map((skill) => {
+                    const Icon = skillIcons[skill.id] || Workflow;
+                    return (
+                      <button
+                        className="skillCard"
+                        type="button"
+                        key={skill.id}
+                        onClick={() => connectSkill(skill.id, skill.title)}
+                      >
+                        <span className={`skillIcon ${skill.accent}`}>
+                          <Icon size={22} />
+                        </span>
+                        <strong>{skill.title}</strong>
+                        <small>
+                          {skill.connected
+                            ? "已连接，可以用于当前任务"
+                            : skill.installed
+                              ? `${skill.description}，已安装`
+                              : skill.description}
+                        </small>
+                        <span className="skillMeta">
+                          {(skill.categories || []).slice(0, 3).join(" / ") || skill.source || "skill"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
             )}
 
             {activeView === "automations" && (
@@ -1264,38 +1317,51 @@ function App() {
               <div className="messageStack" ref={messageStackRef}>
                 {buildMessageDisplayItems(messages).map((item) => {
                   if (item.type === "toolRound") {
-                    const toolCalls = item.assistant?.tool_calls || [];
-                    const visibleContent = cleanAssistantContent(item.assistant?.content || "");
+                    const toolCalls = item.rounds.flatMap((round) => round.assistant?.tool_calls || []);
+                    const toolResults = item.rounds.flatMap((round) => round.toolResults);
+                    const isPending = toolCalls.length > toolResults.length || toolResults.length === 0;
                     return (
                       <article className="toolTimelineItem" key={item.id}>
                         <div className="toolTimelineRail">
-                          <span className={`toolTimelineIcon ${item.toolResults.length ? "done" : "pending"}`}>
-                            {item.toolResults.length ? <Check size={15} /> : <Wrench size={15} />}
+                          <span className={`toolTimelineIcon ${isPending ? "pending" : "done"}`}>
+                            {isPending ? <Wrench size={15} /> : <Check size={15} />}
                           </span>
                         </div>
                         <div className="toolTimelineBody">
-                          {visibleContent && (
-                            <div className="assistantText beforeToolCall">
-                              {item.assistant?.status === "thinking" && <div className="inlineStatus">working</div>}
-                              {renderRichText(visibleContent)}
-                            </div>
-                          )}
+                          <div className="agentProcess">
+                            {item.rounds.map((round, roundIndex) => {
+                              const visibleContent = cleanAssistantContent(round.assistant?.content || "");
+                              return (
+                                <div className="agentProcessStep" key={`${item.id}-step-${roundIndex}`}>
+                                  <span className="agentProcessDot" />
+                                  <div>
+                                    {visibleContent ? renderRichText(visibleContent) : <p>{getToolRoundNarrative(round, roundIndex)}</p>}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                           <details className="toolRoundDetails">
                             <summary className="toolTimelineSummary">
-                              <span>{getToolRoundSummary(toolCalls, item.toolResults)}</span>
+                              <span>{getToolSequenceSummary(toolCalls, toolResults)}</span>
                               <ChevronDown size={16} />
                             </summary>
                             <div className="toolRoundPayloads">
-                              {toolCalls.map((tc) => (
-                                <div className="toolPayloadCard" key={tc.id}>
-                                  <strong>Request</strong>
-                                  <pre className="toolContent">{formatToolRequest(tc)}</pre>
-                                </div>
-                              ))}
-                              {item.toolResults.map((result) => (
-                                <div className="toolPayloadCard" key={result.id}>
-                                  <strong>Response · {result.toolName || "tool"}</strong>
-                                  <pre className="toolContent">{formatToolResponse(result.content)}</pre>
+                              {item.rounds.map((round, roundIndex) => (
+                                <div className="toolPayloadGroup" key={`${item.id}-payload-${roundIndex}`}>
+                                  {item.rounds.length > 1 && <span className="toolPayloadGroupTitle">步骤 {roundIndex + 1}</span>}
+                                  {(round.assistant?.tool_calls || []).map((tc) => (
+                                    <div className="toolPayloadCard" key={tc.id}>
+                                      <strong>Request · {tc.function.name}</strong>
+                                      <pre className="toolContent">{formatToolRequest(tc)}</pre>
+                                    </div>
+                                  ))}
+                                  {round.toolResults.map((result) => (
+                                    <div className="toolPayloadCard" key={result.id}>
+                                      <strong>Response · {result.toolName || "tool"}</strong>
+                                      <pre className="toolContent">{formatToolResponse(result.content)}</pre>
+                                    </div>
+                                  ))}
                                 </div>
                               ))}
                             </div>
@@ -1814,6 +1880,7 @@ function getToolCallSummary(toolCall: ToolCall) {
   if (name === "write_file" || name === "replace_in_file") return "正在修改文件";
   if (name === "transform_image") return "正在生成修改后的图片";
   if (name === "run_tests") return "正在运行验证命令";
+  if (name === "run_command") return "正在运行命令";
   return `正在调用 ${name}`;
 }
 
@@ -1832,23 +1899,30 @@ function buildMessageDisplayItems(messages: StoredMessage[]): MessageDisplayItem
   for (let index = 0; index < messages.length; index++) {
     const message = messages[index];
     if (message.role === "tool") {
-      items.push({ type: "toolRound", id: `tool-${message.id}`, toolResults: [message] });
+      items.push({ type: "toolRound", id: `tool-${message.id}`, rounds: [{ toolResults: [message] }] });
       continue;
     }
 
     if (message.role === "assistant" && message.tool_calls?.length) {
-      const toolResults: ToolMessage[] = [];
-      let nextIndex = index + 1;
-      while (nextIndex < messages.length && messages[nextIndex].role === "tool") {
-        toolResults.push(messages[nextIndex] as ToolMessage);
+      const rounds: ToolRound[] = [];
+      let nextIndex = index;
+      let itemId = message.id;
+
+      while (nextIndex < messages.length) {
+        const assistant = messages[nextIndex];
+        if (assistant.role !== "assistant" || !assistant.tool_calls?.length) break;
+
+        const toolResults: ToolMessage[] = [];
         nextIndex++;
+        while (nextIndex < messages.length && messages[nextIndex].role === "tool") {
+          toolResults.push(messages[nextIndex] as ToolMessage);
+          nextIndex++;
+        }
+
+        rounds.push({ assistant, toolResults });
       }
-      items.push({
-        type: "toolRound",
-        id: message.id,
-        assistant: message,
-        toolResults
-      });
+
+      items.push({ type: "toolRound", id: itemId, rounds });
       index = nextIndex - 1;
       continue;
     }
@@ -1858,14 +1932,29 @@ function buildMessageDisplayItems(messages: StoredMessage[]): MessageDisplayItem
   return items;
 }
 
-function getToolRoundSummary(toolCalls: ToolCall[], toolResults: ToolMessage[]) {
+function getToolRoundNarrative(round: ToolRound, roundIndex: number) {
+  const toolCalls = round.assistant?.tool_calls || [];
+  if (toolCalls.length === 0 && round.toolResults.length > 0) {
+    return round.toolResults.map(getToolSummary).join("，");
+  }
+
+  const actions = toolCalls.map(getToolCallSummary);
+  if (actions.length === 0) return `正在推进第 ${roundIndex + 1} 步。`;
+  const uniqueActions = [...new Set(actions)];
+  if (uniqueActions.length === 1) return uniqueActions[0];
+  return `正在处理：${uniqueActions.join("，")}。`;
+}
+
+function getToolSequenceSummary(toolCalls: ToolCall[], toolResults: ToolMessage[]) {
   const names = [...toolCalls.map((toolCall) => toolCall.function.name), ...toolResults.map((result) => result.toolName)]
     .filter((name): name is string => Boolean(name));
   const toolCount = new Set(names).size || toolCalls.length || toolResults.length;
+  const callCount = toolCalls.length || toolResults.length;
   const commandCount =
     toolCalls.filter((toolCall) => toolCall.function.name === "run_command").length ||
     toolResults.filter((result) => result.toolName === "run_command").length;
-  const parts = [`使用了 ${toolCount} 个工具`];
+  const parts = [`工具详情：${callCount} 次调用`];
+  if (toolCount > 1) parts.push(`${toolCount} 类工具`);
   if (commandCount > 0) parts.push(`运行 ${commandCount} 个命令`);
   return parts.join("，");
 }
