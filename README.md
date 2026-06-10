@@ -4,6 +4,10 @@ SuperCodex 是一个本地运行的通用办公 Agent。它提供类似 Codex / 
 
 项目当前定位不是单纯 coding agent，而是面向办公、研究、文件处理、网页任务、本地项目修改和自动化流程的通用 Agent 工作台。
 
+## 界面预览
+
+![SuperCodex 前端交互界面](./supercodex-project-loader-verified.png)
+
 ## 当前能力边界
 
 SuperCodex 当前适合本地个人工作台和小团队内测，不建议直接暴露到公网。它默认信任本机用户，并通过工作区路径限制和命令拦截降低破坏性操作风险。
@@ -12,8 +16,9 @@ SuperCodex 当前适合本地个人工作台和小团队内测，不建议直接
 
 - OpenAI-compatible API 接入，支持 DeepSeek、OpenAI、兼容网关或自建模型服务。
 - Agent 自主判断是否调用工具，后端不再用固定规则决定工具开关。
-- 最多 200 轮工具调用，适合较长任务链。
+- 默认最多 24 轮工具调用，可通过环境变量调整，适合较长任务链同时避免异常循环。
 - 流式执行过程展示，前端可实时看到任务步骤、工具调用和工具结果。
+- Agent 上下文会保留摘要和最近消息窗口，并对工具结果做预算截断，降低长任务 token 消耗。
 - 本地项目加载，可让 Agent 读取、搜索、修改项目文件并运行测试。
 - 文件和图片附件上传，支持通过加号菜单或粘贴添加。
 - 图片处理能力，支持缩放、裁剪、旋转、灰度、模糊、锐化、翻转和格式转换。
@@ -82,6 +87,12 @@ API_BASE_URL=https://api.openai.com/v1
 API_KEY=sk-your-key
 API_MODEL=gpt-4.1
 PORT=8787
+MAX_AGENT_TURNS=24
+MAX_OUTPUT_TOKENS=1600
+RECENT_CONTEXT_MESSAGES=24
+MAX_CONTEXT_TOOL_CHARS=6000
+MAX_CONTEXT_MESSAGE_CHARS=10000
+MAX_TOOL_RESULT_CHARS=12000
 ```
 
 如果使用 DeepSeek，可配置为：
@@ -91,6 +102,8 @@ API_BASE_URL=https://api.deepseek.com
 API_KEY=sk-your-deepseek-key
 API_MODEL=deepseek-chat
 PORT=8787
+MAX_AGENT_TURNS=24
+MAX_OUTPUT_TOKENS=1600
 ```
 
 不要把真实 API Key 提交到仓库。

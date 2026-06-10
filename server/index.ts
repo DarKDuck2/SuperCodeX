@@ -2,17 +2,21 @@ import cors from "cors";
 import "dotenv/config";
 import express from "express";
 import multer from "multer";
-import { exec, execFile } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import sharp from "sharp";
 import { computeNextRunAt, normalizeScheduleText, parseAutomationInput } from "./automation/schedule.js";
 import { normalizeLocalPath, safeResolvePath, sanitizeFileName } from "./core/paths.js";
-import { assertCommandAllowed, getBlockedCommandReason } from "./core/security.js";
 import { normalizeWhitespace, stripAnsi, titleFromPrompt } from "./core/text.js";
+import { executeStructuredCommand, normalizeCommandInput } from "./tools/command.js";
+import { ToolRegistry } from "./tools/registry.js";
+import { runRegisteredTool } from "./tools/runtime.js";
+import { selectToolsForTask } from "./tools/selection.js";
+import type { ToolRuntimeResult } from "./tools/runtime.js";
+import type { ToolCall, ToolContext, ToolDefinition, ToolHandler, ToolMetadata, ToolTrace } from "./tools/types.js";
 
-const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 const app = express();
 const port = Number(process.env.PORT ?? 8787);
@@ -22,7 +26,12 @@ const dataFile = path.join(dataDir, "state.json");
 const legacyUploadDir = path.join(dataDir, "uploads");
 const conversationsDir = path.join(dataDir, "conversations");
 const workspaceFilesDirName = "supercodex-files";
-const maxAgentTurns = 200;
+const maxAgentTurns = Number(process.env.MAX_AGENT_TURNS ?? 24);
+const maxOutputTokens = Number(process.env.MAX_OUTPUT_TOKENS ?? 1600);
+const recentContextMessageLimit = Number(process.env.RECENT_CONTEXT_MESSAGES ?? 24);
+const maxContextToolChars = Number(process.env.MAX_CONTEXT_TOOL_CHARS ?? 6000);
+const maxContextMessageChars = Number(process.env.MAX_CONTEXT_MESSAGE_CHARS ?? 10_000);
+const maxToolResultChars = Number(process.env.MAX_TOOL_RESULT_CHARS ?? 12_000);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024, files: 12 }
@@ -30,27 +39,12 @@ const upload = multer({
 
 type Role = "system" | "user" | "assistant" | "tool";
 
-type ToolCall = {
-  id: string;
-  type: "function";
-  function: { name: string; arguments: string };
-};
-
 type ChatMessage = {
   role: Role;
   content: string | null;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
   name?: string;
-};
-
-type ToolDefinition = {
-  type: "function";
-  function: {
-    name: string;
-    description: string;
-    parameters: Record<string, unknown>;
-  };
 };
 
 type ApiConfig = {
@@ -88,6 +82,33 @@ type Conversation = {
   messages: StoredMessage[];
   folderName?: string;
   summary?: string;
+  usage?: ConversationUsage;
+};
+
+type TokenUsageMetrics = {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cacheHitTokens: number;
+  cacheMissTokens: number;
+};
+
+type LlmCallUsage = {
+  id: string;
+  model: string;
+  purpose: string;
+  turn?: number;
+  enableTools: boolean;
+  inputMessageCount: number;
+  selectedToolCount: number;
+  createdAt: string;
+  usage: TokenUsageMetrics;
+};
+
+type ConversationUsage = {
+  calls: LlmCallUsage[];
+  totals: TokenUsageMetrics;
+  updatedAt: string;
 };
 
 type Project = {
@@ -112,6 +133,13 @@ type Skill = {
   connected: boolean;
   installed: boolean;
   npmPackage?: string;
+  source?: "builtin" | "user" | "discovered";
+  categories?: string[];
+  keywords?: string[];
+  toolNames?: string[];
+  instructions?: string;
+  manifestPath?: string;
+  lastLoadedAt?: string;
 };
 
 type Automation = {
@@ -205,7 +233,7 @@ type WebSearchPayload = {
 
 type AgentResult = {
   finalMessage: Message;
-  toolCalls: Array<{ id: string; name: string; args: string; result: string }>;
+  toolCalls: Array<{ id: string; name: string; args: string; result: string; trace?: ToolTrace }>;
   turns: number;
 };
 
@@ -213,7 +241,8 @@ type AgentEvent =
   | { type: "step"; turn: number; message: string }
   | { type: "assistant_tool_call"; turn: number; message: Message }
   | { type: "tool_result"; turn: number; message: ToolMessage }
-  | { type: "final"; turn: number; message: Message; conversation: Conversation; toolCalls: AgentResult["toolCalls"] }
+  | { type: "usage"; turn: number; call: LlmCallUsage; totals: TokenUsageMetrics }
+  | { type: "final"; turn: number; message: Message; conversation: Conversation; toolCalls: AgentResult["toolCalls"]; usage?: ConversationUsage }
   | { type: "error"; error: string };
 
 const settings: Required<ApiConfig> = {
@@ -222,11 +251,151 @@ const settings: Required<ApiConfig> = {
   model: process.env.API_MODEL ?? "gpt-4.1"
 };
 
+const builtinSkillCatalog: Skill[] = [
+  {
+    id: "messages",
+    title: "团队消息",
+    description: "从团队讨论中获取背景信息、待办和风险",
+    accent: "slack",
+    connected: false,
+    installed: true,
+    npmPackage: "@slack/web-api",
+    source: "builtin",
+    categories: ["communication", "office"],
+    keywords: ["slack", "消息", "团队", "聊天", "待办"],
+    toolNames: ["discover_or_load_skill", "search_web", "fetch_url"]
+  },
+  {
+    id: "email",
+    title: "电子邮件",
+    description: "总结邮件、起草回复和跟进请求",
+    accent: "mail",
+    connected: false,
+    installed: true,
+    source: "builtin",
+    categories: ["communication", "office"],
+    keywords: ["email", "mail", "邮件", "回复", "跟进"],
+    toolNames: ["discover_or_load_skill", "write_file"]
+  },
+  {
+    id: "files",
+    title: "文件处理",
+    description: "审查报告、研究资料、计划和本地文件",
+    accent: "drive",
+    connected: false,
+    installed: true,
+    npmPackage: "@googleapis/drive",
+    source: "builtin",
+    categories: ["files", "office"],
+    keywords: ["文件", "报告", "资料", "drive", "docx", "本地文件"],
+    toolNames: ["list_directory", "read_file", "write_file", "search_files", "read_attachment"]
+  },
+  {
+    id: "academic",
+    title: "学术研究",
+    description: "检索论文资料、整理引用、生成研究综述",
+    accent: "research",
+    connected: false,
+    installed: true,
+    source: "builtin",
+    categories: ["research", "search", "office"],
+    keywords: ["学术", "论文", "文献", "引用", "综述", "research", "paper", "citation"],
+    toolNames: ["search_web", "fetch_url", "write_file", "run_command"]
+  },
+  {
+    id: "slides",
+    title: "PPT 演示",
+    description: "生成大纲、讲稿、HTML 演示稿和 PPTX 制作脚本",
+    accent: "slides",
+    connected: false,
+    installed: true,
+    source: "builtin",
+    categories: ["presentation", "office"],
+    keywords: ["ppt", "pptx", "slides", "幻灯片", "演示", "讲稿"],
+    toolNames: ["write_file", "run_command", "read_attachment"]
+  },
+  {
+    id: "pdf",
+    title: "PDF 处理",
+    description: "读取、摘要、提取、转换和整理 PDF 内容",
+    accent: "pdf",
+    connected: false,
+    installed: true,
+    source: "builtin",
+    categories: ["pdf", "documents", "office"],
+    keywords: ["pdf", "提取", "转换", "阅读", "摘要"],
+    toolNames: ["read_attachment", "write_file", "run_command"]
+  },
+  {
+    id: "search",
+    title: "深度搜索",
+    description: "联网搜索、读取网页并沉淀可追溯资料",
+    accent: "search",
+    connected: false,
+    installed: true,
+    source: "builtin",
+    categories: ["search", "research"],
+    keywords: ["搜索", "网页", "联网", "资料", "latest", "web", "search"],
+    toolNames: ["search_web", "fetch_url", "write_file"]
+  },
+  {
+    id: "html",
+    title: "HTML 产物",
+    description: "生成网页、报告页面、可交互原型和静态 HTML",
+    accent: "html",
+    connected: false,
+    installed: true,
+    source: "builtin",
+    categories: ["html", "frontend", "office"],
+    keywords: ["html", "网页", "页面", "前端", "原型", "报告页"],
+    toolNames: ["write_file", "read_file", "run_command", "webbridge_command"]
+  },
+  {
+    id: "excel",
+    title: "Excel 表格",
+    description: "清洗数据、生成 CSV/XLSX、公式和表格分析",
+    accent: "excel",
+    connected: false,
+    installed: true,
+    source: "builtin",
+    categories: ["spreadsheet", "office"],
+    keywords: ["excel", "xlsx", "csv", "表格", "数据", "公式", "sheet"],
+    toolNames: ["read_attachment", "write_file", "run_command"]
+  },
+  {
+    id: "documents",
+    title: "文档写作",
+    description: "撰写、润色、结构化长文档和工作报告",
+    accent: "document",
+    connected: false,
+    installed: true,
+    source: "builtin",
+    categories: ["documents", "office"],
+    keywords: ["docx", "word", "文档", "报告", "润色", "写作"],
+    toolNames: ["read_attachment", "write_file", "run_command"]
+  },
+  {
+    id: "webbridge",
+    title: "Kimi WebBridge",
+    description: "控制真实浏览器、读取网页、截图和跨站操作",
+    accent: "webbridge",
+    connected: false,
+    installed: true,
+    source: "builtin",
+    categories: ["browser", "search", "external"],
+    keywords: ["webbridge", "浏览器", "真实浏览器", "网页操作", "browser"],
+    toolNames: ["webbridge_status", "webbridge_command"]
+  }
+];
+
 const systemPrompt = [
   "You are SuperCodex, a general office agent.",
   "Help with workplace tasks such as email, documents, research, planning, automation, meetings, operations, and cross-app workflows.",
   "Be practical, concise, and action-oriented.",
   "Use tools only when they are necessary to complete the task.",
+  "When you call tools, include one brief sentence in your assistant content explaining what you understood and what you are about to check or change. Keep raw tool details out of that sentence.",
+  "Use discover_or_load_skill when the user's request needs a capability that is not currently loaded or when a better skill/tool package may exist.",
+  "After loading a relevant skill, continue the task with the expanded tool plan instead of stopping at installation advice.",
   "Operate fully automatically within the available tools. Do not ask the user to approve routine tool use.",
   "Never delete files, wipe directories, reset repositories, format disks, escalate privileges, or perform destructive cleanup. If a requested task requires deletion, explain that it was blocked by the automatic safety policy and offer a non-destructive alternative.",
   "When browser or web tools return HTML, DOM, or raw JSON, never echo it verbatim. Extract the useful facts, page title, visible text, links, and next actions instead."
@@ -237,15 +406,8 @@ const conversations = new Map<string, Conversation>();
 const skills = new Map<string, Skill>();
 const automations = new Map<string, Automation>();
 const attachments = new Map<string, Attachment>();
-const tools = new Map<string, ToolDefinition>();
-const toolHandlers = new Map<string, (args: Record<string, unknown>, context: ToolContext) => Promise<string>>();
+const toolRegistry = new ToolRegistry();
 const runningAutomations = new Set<string>();
-
-type ToolContext = {
-  workspacePath: string;
-  outputPath: string;
-  attachments: Attachment[];
-};
 
 registerTools();
 await initializeStore();
@@ -261,7 +423,7 @@ app.get("/api/health", (_req, res) => {
     model: settings.model,
     baseUrl: settings.baseUrl,
     workspaceRoot,
-    tools: [...tools.keys()]
+    tools: toolRegistry.names()
   });
 });
 
@@ -554,16 +716,33 @@ app.get("/api/skills", (_req, res) => {
   res.json({ skills: [...skills.values()] });
 });
 
+app.get("/api/skills/search", (req, res) => {
+  const query = String(req.query.q || "");
+  res.json({ skills: searchSkillCatalog(query) });
+});
+
 app.post("/api/skills/:id/connect", async (req, res) => {
-  const skill = skills.get(req.params.id);
+  const skill = skills.get(req.params.id) || loadSkillById(req.params.id, "user");
   if (!skill) {
     res.status(404).json({ error: "skill not found" });
     return;
   }
 
   skill.connected = true;
+  skill.installed = true;
+  skill.lastLoadedAt = now();
   await persistStore();
   res.json({ skill });
+});
+
+app.post("/api/skills/load", async (req, res) => {
+  try {
+    const skill = await loadExternalSkill(req.body as Record<string, unknown>);
+    await persistStore();
+    res.status(201).json({ skill });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "failed to load skill" });
+  }
 });
 
 app.get("/api/tools", (_req, res) => {
@@ -571,7 +750,8 @@ app.get("/api/tools", (_req, res) => {
     tools: getToolDefinitions().map((tool) => ({
       name: tool.function.name,
       description: tool.function.description,
-      parameters: tool.function.parameters
+      parameters: tool.function.parameters,
+      metadata: toolRegistry.get(tool.function.name)?.metadata
     }))
   });
 });
@@ -744,19 +924,9 @@ app.post("/api/tools/run-command", async (req, res) => {
     return;
   }
 
-  const blocked = getBlockedCommandReason(command);
-  if (blocked) {
-    res.status(403).json({
-      ok: false,
-      code: 403,
-      stdout: "",
-      stderr: `Command blocked by SuperCodex automatic safety policy (${blocked}): ${command}`
-    });
-    return;
-  }
-
   try {
-    const result = await execAsync(command, {
+    const normalized = normalizeCommandInput({ command });
+    const result = await executeStructuredCommand(normalized, {
       cwd: safeResolvePath(cwd || ".", workspaceRoot),
       timeout: 20_000,
       maxBuffer: 1024 * 1024
@@ -776,7 +946,7 @@ app.post("/api/tools/run-command", async (req, res) => {
 
 app.listen(port, () => {
   console.log(`SuperCodex API listening on http://localhost:${port}`);
-  console.log(`Available tools: ${[...tools.keys()].join(", ")}`);
+  console.log(`Available tools: ${toolRegistry.names().join(", ")}`);
 });
 
 function writeAgentEvent(res: express.Response, event: AgentEvent) {
@@ -799,29 +969,27 @@ async function runAgentLoop(
   };
   await fs.mkdir(context.outputPath, { recursive: true });
   const outputRelativePath = path.relative(context.workspacePath, context.outputPath) || ".";
-  const chatMessages: ChatMessage[] = [
-    { role: "system", content: systemPrompt },
-    {
-      role: "system",
-      content: [
-        `Current local project workspace: ${context.workspacePath}.`,
-        `Generated files directory: ${context.outputPath}.`,
-        `When the user does not specify an output path, save generated files, scripts, and intermediate outputs under ${outputRelativePath}.`,
-        "run_command without cwd runs in the generated files directory. Pass cwd explicitly when you need to run commands from the project root or a subdirectory."
-      ].join(" ")
-    },
-    {
-      role: "system",
-      content: formatAttachmentContext(conversationAttachments)
-    },
-    ...conversation.messages.map(toChatMessage)
-  ];
+  const chatMessages: ChatMessage[] = buildAgentContextMessages(conversation, context, outputRelativePath);
   const toolCalls: AgentResult["toolCalls"] = [];
 
   for (let turns = 1; turns <= maxAgentTurns; turns++) {
     assertNotAborted(signal);
     onEvent?.({ type: "step", turn: turns, message: `第 ${turns} 步：模型正在判断是否需要调用工具。` });
-    const response = await callLLM(chatMessages, config, true, signal);
+    const selectedToolDefinitions = selectToolsForTask(toolRegistry.list(), {
+      prompt: latestUserPrompt(conversation),
+      context,
+      ...getActiveSkillSelection()
+    }).map((tool) => tool.definition);
+    const response = await callLLM(chatMessages, config, true, signal, selectedToolDefinitions);
+    const usageCall = recordLlmUsage(conversation, response, {
+      config,
+      purpose: "agent_turn",
+      turn: turns,
+      enableTools: true,
+      inputMessageCount: chatMessages.length,
+      selectedToolCount: selectedToolDefinitions.length
+    });
+    if (usageCall) onEvent?.({ type: "usage", turn: turns, call: usageCall, totals: conversation.usage!.totals });
     assertNotAborted(signal);
     const message = response.choices?.[0]?.message;
     if (!message) throw new Error("LLM returned no choices");
@@ -850,13 +1018,15 @@ async function runAgentLoop(
           turn: turns,
           message: `第 ${turns} 步：正在执行工具 ${toolCall.function.name}。`
         });
-        const result = await executeToolCall(toolCall, context);
+        const execution = await executeToolCall(toolCall, context);
+        const result = execution.modelContent;
         assertNotAborted(signal);
         toolCalls.push({
           id: toolCall.id,
           name: toolCall.function.name,
           args: toolCall.function.arguments,
-          result
+          result,
+          trace: execution.trace
         });
 
         const toolMessage: ToolMessage = {
@@ -878,6 +1048,7 @@ async function runAgentLoop(
         });
       }
 
+      conversation.summary = summarizeConversation(conversation);
       await persistStore();
       continue;
     }
@@ -892,7 +1063,7 @@ async function runAgentLoop(
     conversation.updatedAt = finalMessage.createdAt;
     conversation.summary = summarizeConversation(conversation);
     await persistStore();
-    onEvent?.({ type: "final", turn: turns, message: finalMessage, conversation, toolCalls });
+    onEvent?.({ type: "final", turn: turns, message: finalMessage, conversation, toolCalls, usage: conversation.usage });
     return { finalMessage, toolCalls, turns };
   }
 
@@ -905,6 +1076,15 @@ async function runAgentLoop(
     false,
     signal
   );
+  const usageCall = recordLlmUsage(conversation, finalResponse, {
+    config,
+    purpose: "agent_final_after_tool_budget",
+    turn: maxAgentTurns,
+    enableTools: false,
+    inputMessageCount: chatMessages.length + 1,
+    selectedToolCount: 0
+  });
+  if (usageCall) onEvent?.({ type: "usage", turn: maxAgentTurns, call: usageCall, totals: conversation.usage!.totals });
   assertNotAborted(signal);
   const finalMessage: Message = {
     id: id("message"),
@@ -916,11 +1096,17 @@ async function runAgentLoop(
   conversation.updatedAt = finalMessage.createdAt;
   conversation.summary = summarizeConversation(conversation);
   await persistStore();
-  onEvent?.({ type: "final", turn: maxAgentTurns, message: finalMessage, conversation, toolCalls });
+  onEvent?.({ type: "final", turn: maxAgentTurns, message: finalMessage, conversation, toolCalls, usage: conversation.usage });
   return { finalMessage, toolCalls, turns: maxAgentTurns };
 }
 
-async function callLLM(messages: ChatMessage[], config?: ApiConfig, enableTools = false, signal?: AbortSignal) {
+async function callLLM(
+  messages: ChatMessage[],
+  config?: ApiConfig,
+  enableTools = false,
+  signal?: AbortSignal,
+  selectedToolDefinitions?: ToolDefinition[]
+) {
   const effective = {
     baseUrl: normalizeBaseUrl(config?.baseUrl || settings.baseUrl),
     apiKey: config?.apiKey || settings.apiKey,
@@ -933,7 +1119,7 @@ async function callLLM(messages: ChatMessage[], config?: ApiConfig, enableTools 
     } as ChatCompletionResponse;
   }
 
-  const toolDefinitions = enableTools ? getToolDefinitions() : [];
+  const toolDefinitions = enableTools ? selectedToolDefinitions ?? getToolDefinitions() : [];
   const upstream = await fetch(`${effective.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -944,7 +1130,8 @@ async function callLLM(messages: ChatMessage[], config?: ApiConfig, enableTools 
       model: effective.model,
       messages,
       ...(toolDefinitions.length > 0 ? { tools: toolDefinitions, tool_choice: "auto" } : {}),
-      temperature: 0.2
+      temperature: 0.2,
+      max_tokens: maxOutputTokens
     }),
     signal
   });
@@ -968,6 +1155,58 @@ function registerTools() {
     {
       type: "function",
       function: {
+        name: "discover_or_load_skill",
+        description: "Search the SuperCodex skill catalog and load a relevant skill/tool package for the current task. Use this when a request mentions a capability that is missing, unclear, or better handled by a specialized office skill.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Capability or task to search for, e.g. academic PDF summary, PPT, Excel analysis, HTML report" },
+            skillId: { type: "string", description: "Optional exact skill id to load from the catalog" },
+            connect: { type: "boolean", description: "Whether to connect/load the selected skill. Defaults to true." }
+          }
+        }
+      }
+    },
+    {
+      riskLevel: "read",
+      permissions: [],
+      timeoutMs: 5_000,
+      categories: ["orchestration"],
+      keywords: ["skill", "tool", "能力", "工具", "加载"]
+    },
+    async (args) => {
+      const query = String(args.query || args.skillId || "");
+      const matches = searchSkillCatalog(query);
+      const exact = args.skillId ? matches.find((skill) => skill.id === String(args.skillId)) : undefined;
+      const selected = exact || matches[0];
+      const shouldConnect = args.connect !== false;
+      const loaded = selected && shouldConnect ? loadSkillById(selected.id, "discovered") : undefined;
+      if (loaded) {
+        loaded.connected = true;
+        loaded.installed = true;
+        loaded.lastLoadedAt = now();
+        await persistStore();
+      }
+      return {
+        ok: true,
+        summary: loaded
+          ? `Loaded skill: ${loaded.title}`
+          : matches.length
+            ? `Found ${matches.length} matching skills.`
+            : "No matching skills found in the local catalog.",
+        data: {
+          query,
+          loaded,
+          matches: matches.slice(0, 6).map(publicSkillSummary)
+        }
+      };
+    }
+  );
+
+  registerTool(
+    {
+      type: "function",
+      function: {
         name: "list_directory",
         description: "List files and directories inside the workspace.",
         parameters: {
@@ -975,6 +1214,11 @@ function registerTools() {
           properties: { path: { type: "string", description: "Directory path" } }
         }
       }
+    },
+    {
+      riskLevel: "read",
+      permissions: ["workspace:read"],
+      timeoutMs: 10_000
     },
     async (args, context) => {
       const dirPath = safeResolvePath(String(args.path || "."), context.workspacePath);
@@ -998,6 +1242,11 @@ function registerTools() {
           required: ["path"]
         }
       }
+    },
+    {
+      riskLevel: "read",
+      permissions: ["workspace:read"],
+      timeoutMs: 10_000
     },
     async (args, context) => {
       const filePath = safeResolvePath(String(args.path || ""), context.workspacePath);
@@ -1025,6 +1274,14 @@ function registerTools() {
         }
       }
     },
+    {
+      riskLevel: "write",
+      permissions: ["workspace:write"],
+      producesArtifacts: true,
+      timeoutMs: 10_000,
+      categories: ["files", "documents", "html", "presentation", "spreadsheet", "office"],
+      skillIds: ["files", "slides", "pdf", "html", "excel", "documents", "academic"]
+    },
     async (args, context) => {
       const filePath = resolveGeneratedFilePath(String(args.path || ""), context);
       await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -1038,23 +1295,35 @@ function registerTools() {
       type: "function",
       function: {
         name: "run_command",
-        description: "Run a safe shell command. If cwd is omitted, it runs in the generated files directory for scripts and intermediate outputs.",
+        description: "Run a safe structured command. Prefer executable plus args. Legacy command strings are accepted only when they do not use shell operators. If cwd is omitted, it runs in the generated files directory for scripts and intermediate outputs.",
         parameters: {
           type: "object",
           properties: {
-            command: { type: "string", description: "Command to run" },
+            executable: { type: "string", description: "Executable name or path, e.g. npm, node, rg" },
+            args: {
+              type: "array",
+              items: { type: "string" },
+              description: "Arguments passed directly to the executable"
+            },
+            command: { type: "string", description: "Legacy command string for simple commands without shell operators" },
             cwd: { type: "string", description: "Working directory" }
-          },
-          required: ["command"]
+          }
         }
       }
     },
+    {
+      riskLevel: "shell",
+      permissions: ["shell:run", "workspace:read", "workspace:write"],
+      producesArtifacts: true,
+      timeoutMs: 30_000,
+      categories: ["office", "documents", "presentation", "pdf", "spreadsheet", "html"],
+      skillIds: ["slides", "pdf", "html", "excel", "documents", "academic"]
+    },
     async (args, context) => {
-      const command = String(args.command || "");
-      assertCommandAllowed(command);
+      const command = normalizeCommandInput(args);
       const cwd = await resolveCommandCwd(args.cwd, context);
       const beforeFiles = await snapshotGeneratedFiles(context.outputPath);
-      const result = await execAsync(command, {
+      const result = await executeStructuredCommand(command, {
         cwd,
         timeout: 30_000,
         maxBuffer: 1024 * 1024 * 5
@@ -1062,7 +1331,11 @@ function registerTools() {
       const generatedFiles = diffGeneratedFiles(beforeFiles, await snapshotGeneratedFiles(context.outputPath), context);
       const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
       const generatedOutput = generatedFiles.map((filePath) => `Generated file: ${filePath}`).join("\n");
-      return [output || "(Command succeeded, no output)", generatedOutput].filter(Boolean).join("\n");
+      return [
+        `Command executed (${command.source}): ${command.display}`,
+        output || "(Command succeeded, no output)",
+        generatedOutput
+      ].filter(Boolean).join("\n");
     }
   );
 
@@ -1082,6 +1355,11 @@ function registerTools() {
           required: ["query"]
         }
       }
+    },
+    {
+      riskLevel: "read",
+      permissions: ["workspace:read"],
+      timeoutMs: 20_000
     },
     async (args, context) => {
       const query = String(args.query || "");
@@ -1118,6 +1396,11 @@ function registerTools() {
         }
       }
     },
+    {
+      riskLevel: "write",
+      permissions: ["workspace:read", "workspace:write"],
+      timeoutMs: 10_000
+    },
     async (args, context) => {
       const filePath = safeResolvePath(String(args.path || ""), context.workspacePath);
       const search = String(args.search || "");
@@ -1148,20 +1431,29 @@ function registerTools() {
         }
       }
     },
+    {
+      riskLevel: "shell",
+      permissions: ["shell:run", "workspace:read"],
+      timeoutMs: 120_000
+    },
     async (args, context) => {
-      const command = String(args.command || (await inferTestCommand(context.workspacePath)));
-      assertCommandAllowed(command);
+      const command = normalizeCommandInput({
+        command: String(args.command || (await inferTestCommand(context.workspacePath)))
+      });
       try {
-        const result = await execAsync(command, {
+        const result = await executeStructuredCommand(command, {
           cwd: context.workspacePath,
           timeout: 120_000,
           maxBuffer: 1024 * 1024 * 5
         });
-        return [result.stdout, result.stderr].filter(Boolean).join("\n") || "(Tests completed, no output)";
+        return [
+          `Command executed (${command.source}): ${command.display}`,
+          [result.stdout, result.stderr].filter(Boolean).join("\n") || "(Tests completed, no output)"
+        ].join("\n");
       } catch (error) {
         const err = error as Error & { stdout?: string; stderr?: string; code?: number };
         return [
-          `Command failed (${err.code ?? 1}): ${command}`,
+          `Command failed (${err.code ?? 1}): ${command.display}`,
           err.stdout || "",
           err.stderr || err.message
         ]
@@ -1182,6 +1474,11 @@ function registerTools() {
           properties: {}
         }
       }
+    },
+    {
+      riskLevel: "read",
+      permissions: ["attachments:read"],
+      timeoutMs: 5_000
     },
     async (_args, context) => {
       if (!context.attachments.length) return "No attachments in this conversation.";
@@ -1204,6 +1501,13 @@ function registerTools() {
           required: ["attachmentId"]
         }
       }
+    },
+    {
+      riskLevel: "read",
+      permissions: ["attachments:read"],
+      timeoutMs: 10_000,
+      categories: ["files", "documents", "pdf", "spreadsheet", "office"],
+      skillIds: ["files", "pdf", "excel", "documents", "academic"]
     },
     async (args, context) => {
       const attachment = findContextAttachment(context, String(args.attachmentId || ""));
@@ -1250,6 +1554,12 @@ function registerTools() {
           required: ["attachmentId"]
         }
       }
+    },
+    {
+      riskLevel: "write",
+      permissions: ["attachments:read", "attachments:write", "workspace:write"],
+      producesArtifacts: true,
+      timeoutMs: 30_000
     },
     async (args, context) => {
       const attachment = findContextAttachment(context, String(args.attachmentId || ""));
@@ -1323,6 +1633,13 @@ function registerTools() {
         }
       }
     },
+    {
+      riskLevel: "network",
+      permissions: ["network:fetch"],
+      timeoutMs: 30_000,
+      categories: ["search", "research"],
+      skillIds: ["search", "academic"]
+    },
     async (args) => {
       const url = String(args.url || "");
       if (!/^https?:\/\//.test(url)) throw new Error("Only http/https URLs are allowed");
@@ -1355,6 +1672,13 @@ function registerTools() {
         }
       }
     },
+    {
+      riskLevel: "network",
+      permissions: ["network:fetch"],
+      timeoutMs: 45_000,
+      categories: ["search", "research"],
+      skillIds: ["search", "academic"]
+    },
     async (args) => {
       const query = String(args.query || "");
       const num = Math.max(1, Math.min(Number(args.num) || 5, 8));
@@ -1384,6 +1708,13 @@ function registerTools() {
           properties: {}
         }
       }
+    },
+    {
+      riskLevel: "external",
+      permissions: ["external:webbridge"],
+      timeoutMs: 10_000,
+      categories: ["browser"],
+      skillIds: ["webbridge"]
     },
     async () => {
       return JSON.stringify(await getWebBridgeStatus());
@@ -1416,6 +1747,13 @@ function registerTools() {
         }
       }
     },
+    {
+      riskLevel: "external",
+      permissions: ["external:webbridge"],
+      timeoutMs: 30_000,
+      categories: ["browser", "html"],
+      skillIds: ["webbridge", "html"]
+    },
     async (args) => {
       const action = String(args.action || "");
       if (!["list_tabs", "snapshot", "navigate", "find_tab"].includes(action)) {
@@ -1429,25 +1767,151 @@ function registerTools() {
 
 function registerTool(
   definition: ToolDefinition,
-  handler: (args: Record<string, unknown>, context: ToolContext) => Promise<string>
+  metadata: ToolMetadata,
+  handler: ToolHandler
 ) {
-  tools.set(definition.function.name, definition);
-  toolHandlers.set(definition.function.name, handler);
+  toolRegistry.register(definition, metadata, handler);
 }
 
 function getToolDefinitions() {
-  return [...tools.values()];
+  return toolRegistry.definitions();
 }
 
-async function executeToolCall(toolCall: ToolCall, context: ToolContext) {
-  const handler = toolHandlers.get(toolCall.function.name);
-  if (!handler) return `Unknown tool: ${toolCall.function.name}`;
-  try {
-    const args = JSON.parse(toolCall.function.arguments || "{}") as Record<string, unknown>;
-    return sanitizeToolResult(toolCall.function.name, await handler(args, context));
-  } catch (error) {
-    return `Tool error: ${error instanceof Error ? error.message : "Unknown error"}`;
+function buildAgentContextMessages(conversation: Conversation, context: ToolContext, outputRelativePath: string): ChatMessage[] {
+  const recentMessages = selectRecentContextMessages(conversation.messages);
+  const omittedCount = Math.max(0, conversation.messages.length - recentMessages.length);
+  const messages: ChatMessage[] = [
+    { role: "system", content: systemPrompt },
+    {
+      role: "system",
+      content: [
+        `Current local project workspace: ${context.workspacePath}.`,
+        `Generated files directory: ${context.outputPath}.`,
+        `When the user does not specify an output path, save generated files, scripts, and intermediate outputs under ${outputRelativePath}.`,
+        "run_command without cwd runs in the generated files directory. Pass cwd explicitly when you need to run commands from the project root or a subdirectory."
+      ].join(" ")
+    },
+    {
+      role: "system",
+      content: formatAttachmentContext(context.attachments)
+    },
+    {
+      role: "system",
+      content: formatSkillContext()
+    }
+  ];
+
+  if (omittedCount > 0) {
+    messages.push({
+      role: "system",
+      content: [
+        `Conversation memory summary (${omittedCount} older messages omitted from the live prompt):`,
+        conversation.summary || summarizeConversation(conversation),
+        "Rely on the recent messages below for exact wording. Use tools to re-read files or data when exact details are needed."
+      ].join("\n")
+    });
   }
+
+  messages.push(...recentMessages.map((message) => toChatMessage(message, { compact: true })));
+  return messages;
+}
+
+function selectRecentContextMessages(messages: StoredMessage[]) {
+  const recent = messages.slice(-recentContextMessageLimit);
+  while (recent[0]?.role === "tool") {
+    recent.shift();
+  }
+  return recent;
+}
+
+function recordLlmUsage(
+  conversation: Conversation,
+  response: ChatCompletionResponse,
+  input: {
+    config?: ApiConfig;
+    purpose: string;
+    turn?: number;
+    enableTools: boolean;
+    inputMessageCount: number;
+    selectedToolCount: number;
+  }
+) {
+  const usage = normalizeUsage(response.usage);
+  if (!usage) return undefined;
+  const call: LlmCallUsage = {
+    id: id("usage"),
+    model: response.model || input.config?.model || settings.model,
+    purpose: input.purpose,
+    turn: input.turn,
+    enableTools: input.enableTools,
+    inputMessageCount: input.inputMessageCount,
+    selectedToolCount: input.selectedToolCount,
+    createdAt: now(),
+    usage
+  };
+  const previous = conversation.usage?.calls || [];
+  const calls = [...previous, call].slice(-500);
+  conversation.usage = {
+    calls,
+    totals: sumUsage(calls.map((item) => item.usage)),
+    updatedAt: call.createdAt
+  };
+  return call;
+}
+
+function normalizeUsage(usage: unknown): TokenUsageMetrics | undefined {
+  if (!usage || typeof usage !== "object") return undefined;
+  const input = usage as Record<string, unknown>;
+  const inputTokens = numericUsage(input, "input_tokens", "prompt_tokens");
+  const outputTokens = numericUsage(input, "output_tokens", "completion_tokens");
+  const totalTokens = numericUsage(input, "total_tokens") || inputTokens + outputTokens;
+  const cacheHitTokens = numericUsage(input, "cache_hit_tokens", "prompt_cache_hit_tokens", "cached_tokens");
+  const cacheMissTokens = numericUsage(input, "cache_miss_tokens", "prompt_cache_miss_tokens");
+  return { inputTokens, outputTokens, totalTokens, cacheHitTokens, cacheMissTokens };
+}
+
+function numericUsage(input: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = input[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return 0;
+}
+
+function sumUsage(items: TokenUsageMetrics[]): TokenUsageMetrics {
+  return items.reduce(
+    (total, item) => ({
+      inputTokens: total.inputTokens + item.inputTokens,
+      outputTokens: total.outputTokens + item.outputTokens,
+      totalTokens: total.totalTokens + item.totalTokens,
+      cacheHitTokens: total.cacheHitTokens + item.cacheHitTokens,
+      cacheMissTokens: total.cacheMissTokens + item.cacheMissTokens
+    }),
+    { inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheHitTokens: 0, cacheMissTokens: 0 }
+  );
+}
+
+async function executeToolCall(toolCall: ToolCall, context: ToolContext): Promise<ToolRuntimeResult> {
+  const tool = toolRegistry.get(toolCall.function.name);
+  if (!tool) {
+    const reason = `Unknown tool: ${toolCall.function.name}`;
+    return {
+      modelContent: reason,
+      trace: {
+        id: toolCall.id,
+        toolName: toolCall.function.name,
+        args: {},
+        policy: { action: "deny", reason },
+        startedAt: now(),
+        finishedAt: now(),
+        result: { ok: false, summary: reason, error: reason }
+      }
+    };
+  }
+  return runRegisteredTool(toolCall, tool, context, {
+    sanitize: sanitizeToolResult,
+    maxModelContentLength: maxToolResultChars
+  });
 }
 
 function sanitizeToolResult(toolName: string, result: string) {
@@ -1456,6 +1920,191 @@ function sanitizeToolResult(toolName: string, result: string) {
     `${toolName} returned HTML-like content. SuperCodex extracted readable text instead of raw markup.`,
     htmlToReadableText(result)
   ].join("\n");
+}
+
+function searchSkillCatalog(query: string) {
+  const normalizedQuery = normalizeWhitespace(query).toLowerCase();
+  const catalog = mergeSkillCatalog();
+  if (!normalizedQuery) return catalog.map(publicSkillSummary);
+  return catalog
+    .map((skill) => ({ skill, score: scoreSkill(skill, normalizedQuery) }))
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score || left.skill.title.localeCompare(right.skill.title))
+    .map((entry) => publicSkillSummary(entry.skill));
+}
+
+function mergeSkillCatalog() {
+  const merged = new Map<string, Skill>();
+  for (const skill of builtinSkillCatalog) merged.set(skill.id, normalizeSkill(skill));
+  for (const skill of skills.values()) {
+    const base = merged.get(skill.id);
+    merged.set(skill.id, normalizeSkill({ ...base, ...skill }));
+  }
+  return [...merged.values()];
+}
+
+function scoreSkill(skill: Skill, query: string) {
+  const haystack = [
+    skill.id,
+    skill.title,
+    skill.description,
+    ...(skill.categories || []),
+    ...(skill.keywords || []),
+    ...(skill.toolNames || [])
+  ].join(" ").toLowerCase();
+  const terms = query.split(/\s+/).filter(Boolean);
+  let score = 0;
+  for (const term of terms) {
+    if (skill.id.toLowerCase() === term) score += 8;
+    if (skill.title.toLowerCase().includes(term)) score += 5;
+    if (haystack.includes(term)) score += 2;
+  }
+  if (haystack.includes(query)) score += 6;
+  return score;
+}
+
+function loadSkillById(skillId: string, source: Skill["source"] = "builtin") {
+  const existing = skills.get(skillId);
+  const builtin = builtinSkillCatalog.find((skill) => skill.id === skillId);
+  const skill = existing || builtin;
+  if (!skill) return undefined;
+  const normalized = normalizeSkill({
+    ...builtin,
+    ...skill,
+    source: skill.source || source,
+    installed: true
+  });
+  skills.set(normalized.id, normalized);
+  return normalized;
+}
+
+async function loadExternalSkill(input: Record<string, unknown>) {
+  const manifestPath = String(input.path || input.manifestPath || "").trim();
+  let manifest = input;
+  let instructions = typeof input.instructions === "string" ? input.instructions : "";
+
+  if (manifestPath) {
+    const targetPath = normalizeLocalPath(manifestPath);
+    const stat = await fs.stat(targetPath);
+    const filePath = stat.isDirectory() ? path.join(targetPath, "SKILL.md") : targetPath;
+    const content = await fs.readFile(filePath, "utf-8");
+    manifest = parseSkillMarkdown(content, filePath);
+    instructions ||= content.slice(0, 4000);
+  }
+
+  const idValue = String(manifest.id || manifest.name || manifest.title || "").trim();
+  if (!idValue) throw new Error("skill id or title is required");
+  const skillId = slugifySkillId(idValue);
+  const skill: Skill = normalizeSkill({
+    id: skillId,
+    title: String(manifest.title || manifest.name || idValue),
+    description: String(manifest.description || "用户加载的自定义能力"),
+    accent: String(manifest.accent || "custom"),
+    connected: input.connect !== false,
+    installed: true,
+    source: "user",
+    categories: toStringList(manifest.categories),
+    keywords: toStringList(manifest.keywords),
+    toolNames: toStringList(manifest.toolNames || manifest.tools),
+    instructions,
+    manifestPath: manifestPath || undefined,
+    lastLoadedAt: now()
+  });
+  skills.set(skill.id, skill);
+  return skill;
+}
+
+function parseSkillMarkdown(content: string, filePath: string) {
+  const frontmatter = content.match(/^---\n([\s\S]*?)\n---/);
+  const data: Record<string, unknown> = {};
+  if (frontmatter) {
+    for (const line of frontmatter[1].split("\n")) {
+      const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+      if (!match) continue;
+      const [, key, value] = match;
+      data[key] = value.includes(",") ? value.split(",").map((item) => item.trim()).filter(Boolean) : value.trim();
+    }
+  }
+  const title = content.match(/^#\s+(.+)$/m)?.[1]?.trim() || path.basename(path.dirname(filePath));
+  const description = content
+    .replace(/^---\n[\s\S]*?\n---/, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line && !line.startsWith("#"));
+  return {
+    ...data,
+    title: data.title || title,
+    description: data.description || description || "用户加载的 Markdown skill",
+    instructions: content.slice(0, 4000)
+  };
+}
+
+function normalizeSkill(skill: Skill): Skill {
+  return {
+    ...skill,
+    source: skill.source || "builtin",
+    categories: uniqueStrings(skill.categories || []),
+    keywords: uniqueStrings(skill.keywords || []),
+    toolNames: uniqueStrings(skill.toolNames || []),
+    connected: Boolean(skill.connected),
+    installed: skill.installed !== false
+  };
+}
+
+function publicSkillSummary(skill: Skill) {
+  return {
+    id: skill.id,
+    title: skill.title,
+    description: skill.description,
+    accent: skill.accent,
+    connected: skill.connected,
+    installed: skill.installed,
+    source: skill.source,
+    categories: skill.categories || [],
+    keywords: skill.keywords || [],
+    toolNames: skill.toolNames || []
+  };
+}
+
+function getActiveSkillSelection() {
+  const active = [...skills.values()].filter((skill) => skill.connected);
+  return {
+    activeSkillIds: active.map((skill) => skill.id),
+    activeSkillCategories: uniqueStrings(active.flatMap((skill) => skill.categories || [])),
+    activeSkillKeywords: uniqueStrings(active.flatMap((skill) => skill.keywords || []))
+  };
+}
+
+function formatSkillContext() {
+  const active = [...skills.values()].filter((skill) => skill.connected);
+  const catalog = mergeSkillCatalog();
+  return [
+    active.length
+      ? `Loaded skills: ${active.map((skill) => `${skill.id} (${skill.title})`).join(", ")}.`
+      : "No optional skills are currently loaded.",
+    `Skill catalog: ${catalog
+      .map((skill) => `${skill.id}=${skill.title} [${(skill.categories || []).join("/")}]`)
+      .join("; ")}.`,
+    "If a task would benefit from a catalog skill that is not loaded, call discover_or_load_skill first, then continue the task."
+  ].join(" ");
+}
+
+function toStringList(value: unknown) {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  if (typeof value === "string") return value.split(",").map((item) => item.trim()).filter(Boolean);
+  return [];
+}
+
+function uniqueStrings(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function slugifySkillId(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64) || id("skill");
 }
 
 function startAutomationScheduler() {
@@ -1641,6 +2290,7 @@ async function persistConversationFilesFor(conversation: Conversation) {
         shortcut: conversation.shortcut,
         updatedAt: conversation.updatedAt,
         summary: conversation.summary || summarizeConversation(conversation),
+        usage: conversation.usage,
         messages: conversation.messages
       },
       null,
@@ -1676,6 +2326,7 @@ function renderConversationOverview(conversation: Conversation) {
     `- 消息数：${conversation.messages.length}`,
     `- 用户上传：${uploaded.length}`,
     `- 产生文件：${artifacts.length}`,
+    conversation.usage ? `- Token：input ${conversation.usage.totals.inputTokens} / output ${conversation.usage.totals.outputTokens} / cache hit ${conversation.usage.totals.cacheHitTokens} / cache miss ${conversation.usage.totals.cacheMissTokens}` : "",
     "",
     "## 总结",
     "",
@@ -1706,6 +2357,10 @@ function summarizeConversation(conversation: Conversation) {
     `本次对话围绕“${firstUser.slice(0, 120)}”展开。`,
     lastAssistant ? `最近一次助手回复摘要：${lastAssistant.slice(0, 180)}` : "当前还没有形成完整回复。"
   ].join("\n");
+}
+
+function latestUserPrompt(conversation: Conversation) {
+  return [...conversation.messages].reverse().find((message): message is Message => message.role === "user")?.content || "";
 }
 
 async function generateConversationTitle(prompt: string, config?: ApiConfig) {
@@ -1927,7 +2582,24 @@ function getFileResponseMetadata(filePath: string) {
 
 async function openLocalFile(filePath: string, action: "open" | "reveal") {
   if (process.platform === "darwin") {
-    await execFileAsync("open", action === "reveal" ? ["-R", filePath] : [filePath]);
+    if (action === "reveal") {
+      await execFileAsync("open", ["-R", filePath]);
+      return;
+    }
+    if (isTextLikeFile(filePath)) {
+      try {
+        await execFileAsync("open", ["-t", filePath]);
+        return;
+      } catch {
+        // Fall through to the normal opener before revealing in Finder.
+      }
+    }
+    try {
+      await execFileAsync("open", [filePath]);
+      return;
+    } catch {
+      await execFileAsync("open", ["-R", filePath]);
+    }
     return;
   }
 
@@ -1941,6 +2613,36 @@ async function openLocalFile(filePath: string, action: "open" | "reveal") {
   }
 
   await execFileAsync("xdg-open", [action === "reveal" ? path.dirname(filePath) : filePath]);
+}
+
+function isTextLikeFile(filePath: string) {
+  return new Set([
+    ".c",
+    ".cc",
+    ".cpp",
+    ".css",
+    ".csv",
+    ".go",
+    ".h",
+    ".html",
+    ".java",
+    ".js",
+    ".json",
+    ".jsx",
+    ".md",
+    ".mjs",
+    ".py",
+    ".rb",
+    ".rs",
+    ".sh",
+    ".sql",
+    ".ts",
+    ".tsx",
+    ".txt",
+    ".xml",
+    ".yaml",
+    ".yml"
+  ]).has(path.extname(filePath).toLowerCase());
 }
 
 function publicAttachment(attachment: Attachment) {
@@ -2068,22 +2770,18 @@ function migrateAutomations() {
 
 function ensureSeedSkills() {
   const existing = new Map(skills);
-  [
-    ["messages", "连接消息传送", "从团队讨论中获取背景信息", "slack", "@slack/web-api"],
-    ["email", "连接电子邮件", "总结邮件、起草回复和跟进请求", "mail", ""],
-    ["files", "连接文件", "审查报告、研究资料和计划", "drive", "@googleapis/drive"],
-    ["webbridge", "Kimi WebBridge", "控制真实浏览器、读取网页、截图和跨站操作", "webbridge", ""]
-  ].forEach(([skillId, title, description, accent, npmPackage]) => {
-    skills.set(skillId, {
-      id: skillId,
-      title,
-      description,
-      accent,
-      npmPackage: npmPackage || undefined,
-      connected: existing.get(skillId)?.connected ?? false,
-      installed: skillId === "webbridge" ? true : existing.get(skillId)?.installed ?? false
-    });
-  });
+  for (const catalogSkill of builtinSkillCatalog) {
+    const previous = existing.get(catalogSkill.id);
+    skills.set(catalogSkill.id, normalizeSkill({
+      ...catalogSkill,
+      ...previous,
+      connected: previous?.connected ?? catalogSkill.connected,
+      installed: catalogSkill.installed || previous?.installed || catalogSkill.id === "webbridge"
+    }));
+  }
+  for (const [skillId, skill] of existing) {
+    if (!skills.has(skillId)) skills.set(skillId, normalizeSkill(skill));
+  }
 }
 
 function getAppState() {
@@ -2104,7 +2802,7 @@ function getAppState() {
     })),
     skills: [...skills.values()],
     automations: [...automations.values()],
-    tools: [...tools.keys()]
+    tools: toolRegistry.names()
   };
 }
 
@@ -2129,27 +2827,48 @@ function createConversation(projectId: string, title: string, shortcut?: string)
   return conversation;
 }
 
-function toChatMessage(message: StoredMessage): ChatMessage {
+function toChatMessage(message: StoredMessage, options: { compact?: boolean } = {}): ChatMessage {
   if (message.role === "tool") {
     return {
       role: "tool",
-      content: message.content,
+      content: options.compact ? compactMessageContent(message.content, maxContextToolChars, message.toolName) : message.content,
       tool_call_id: message.tool_call_id,
       name: message.toolName
     };
   }
+  const content = message.attachments?.length
+    ? `${message.content}\n\nAttached files:\n${message.attachments
+        .map((attachment) =>
+          `${attachment.id}: ${attachment.originalName} (${attachment.kind}, ${attachment.mimeType}, ${attachment.size} bytes, ${attachment.url})`
+        )
+        .join("\n")}`
+    : message.content || null;
   return {
     role: message.role,
-    content:
-      message.attachments?.length
-        ? `${message.content}\n\nAttached files:\n${message.attachments
-            .map((attachment) =>
-              `${attachment.id}: ${attachment.originalName} (${attachment.kind}, ${attachment.mimeType}, ${attachment.size} bytes, ${attachment.url})`
-            )
-            .join("\n")}`
-        : message.content || null,
+    content: options.compact ? compactNullableMessageContent(content, maxContextMessageChars, message.role) : content,
     tool_calls: message.tool_calls
   };
+}
+
+function compactNullableMessageContent(content: string | null, limit: number, label: string) {
+  if (content === null) return null;
+  return compactMessageContent(content, limit, label);
+}
+
+function compactMessageContent(content: string, limit: number, label: string) {
+  if (content.length <= limit) return content;
+  const headLength = Math.floor(limit * 0.7);
+  const tailLength = Math.max(0, limit - headLength - 180);
+  const omitted = content.length - headLength - tailLength;
+  return [
+    content.slice(0, headLength).trimEnd(),
+    "",
+    `[${label} message compacted: omitted ${omitted} characters.]`,
+    "",
+    tailLength ? content.slice(-tailLength).trimStart() : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function inferAttachmentKind(mimeType: string, fileName: string): Attachment["kind"] {
