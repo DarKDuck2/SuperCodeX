@@ -6,7 +6,7 @@ SuperCodex 是一个本地运行的通用办公 Agent。它提供类似 Codex / 
 
 ## 界面预览
 
-![SuperCodex 前端交互界面](./supercodex-project-loader-verified.png)
+![SuperCodex 前端交互界面](./supercodex-review.png)
 
 ## 当前能力边界
 
