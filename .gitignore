@@ -26,6 +26,7 @@ supercodex-files/
 # Generated reports and scratch artifacts
 *.pptx
 *.html
+!index.html
 *.pdf
 *.png
 *.jpg

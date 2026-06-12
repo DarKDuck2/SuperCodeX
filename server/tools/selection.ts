@@ -18,6 +18,10 @@ const imageTaskPattern = /图片|图像|照片|截图|裁剪|缩放|旋转|灰�
 const browserTaskPattern = /webbridge|浏览器|打开网页|控制网页|真实浏览器|browser|tab|snapshot/i;
 const shellTaskPattern = /命令|终端|运行|执行|安装|构建|测试|脚本|npm|node|git|rg|shell|command|install|build|test/i;
 const officeTaskPattern = /学术|论文|研究|文献|引用|ppt|幻灯片|演示|pdf|html|excel|表格|数据|csv|xlsx|docx|word|报告|academic|paper|research|citation|slides|presentation|spreadsheet/i;
+const pdfTaskPattern = /pdf|论文|文献|paper|article/i;
+const spreadsheetTaskPattern = /excel|表格|数据|csv|xlsx|xls|sheet|spreadsheet|公式/i;
+const documentTaskPattern = /docx|word|文档|报告|润色|写作|document/i;
+const presentationTaskPattern = /ppt|pptx|幻灯片|演示|deck|slides|presentation/i;
 
 export function selectToolsForTask(
   tools: RegisteredTool[],
@@ -36,7 +40,15 @@ export function selectToolsForTask(
   const activeCategories = new Set((input.activeSkillCategories || []).map((category) => category.toLowerCase()));
   const hasAttachments = input.context.attachments.length > 0;
   const hasImages = input.context.attachments.some((attachment) => attachment.kind === "image");
+  const hasPdfAttachment = input.context.attachments.some(isPdfAttachment);
+  const hasSpreadsheetAttachment = input.context.attachments.some(isSpreadsheetAttachment);
+  const hasDocumentAttachment = input.context.attachments.some(isDocumentAttachment);
+  const hasPresentationAttachment = input.context.attachments.some(isPresentationAttachment);
   const includeOfficeTools = officeTaskPattern.test(selectorText) || activeCategories.has("office") || activeCategories.has("research");
+  const includePdf = pdfTaskPattern.test(selectorText) || activeCategories.has("pdf");
+  const includeSpreadsheet = spreadsheetTaskPattern.test(selectorText) || activeCategories.has("spreadsheet");
+  const includeDocuments = documentTaskPattern.test(selectorText) || activeCategories.has("documents");
+  const includePresentation = presentationTaskPattern.test(selectorText) || activeCategories.has("presentation");
   const includeShell = shellTaskPattern.test(selectorText) || codeTaskPattern.test(selectorText) || includeOfficeTools;
   const includeWeb = webTaskPattern.test(selectorText) || activeCategories.has("search") || activeCategories.has("research");
   const includeImages = hasImages || imageTaskPattern.test(selectorText);
@@ -52,7 +64,29 @@ export function selectToolsForTask(
     if (name === "fetch_url" || name === "search_web") return includeWeb;
     if (name === "transform_image") return includeImages;
     if (name === "webbridge_status" || name === "webbridge_command") return includeBrowser;
+    if (name === "extract_pdf_text") return hasPdfAttachment || includePdf;
+    if (name === "read_spreadsheet") return hasSpreadsheetAttachment || includeSpreadsheet;
+    if (name === "create_spreadsheet") return includeSpreadsheet;
+    if (name === "extract_docx_text") return hasDocumentAttachment || includeDocuments;
+    if (name === "inspect_presentation") return hasPresentationAttachment || includePresentation;
     if (tool.metadata.permissions.includes("attachments:read")) return hasAttachments;
-    return true;
+    if (metadata.categories?.includes("office")) return includeOfficeTools;
+    return false;
   });
+}
+
+function isPdfAttachment(attachment: ToolContext["attachments"][number]) {
+  return attachment.mimeType === "application/pdf" || /\.pdf$/i.test(attachment.originalName);
+}
+
+function isSpreadsheetAttachment(attachment: ToolContext["attachments"][number]) {
+  return /(?:csv|excel|spreadsheet|sheet)/i.test(attachment.mimeType) || /\.(csv|xls|xlsx)$/i.test(attachment.originalName);
+}
+
+function isDocumentAttachment(attachment: ToolContext["attachments"][number]) {
+  return /wordprocessingml|msword/i.test(attachment.mimeType) || /\.(doc|docx)$/i.test(attachment.originalName);
+}
+
+function isPresentationAttachment(attachment: ToolContext["attachments"][number]) {
+  return /presentation|powerpoint/i.test(attachment.mimeType) || /\.(ppt|pptx)$/i.test(attachment.originalName);
 }

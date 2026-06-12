@@ -35,177 +35,46 @@ import {
   Workflow
 } from "lucide-react";
 import { ClipboardEvent, FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { SettingsDock } from "./components/SettingsDock";
+import { Sidebar } from "./components/Sidebar";
+import {
+  buildMessageDisplayItems,
+  cleanAssistantContent,
+  extractArtifacts,
+  flattenProjectTree,
+  formatAutomationStatus,
+  formatDateTime,
+  formatFileSize,
+  formatToolRequest,
+  formatToolResponse,
+  getToolRoundNarrative,
+  getToolSequenceSummary,
+  removeMessage,
+  renderArtifactIcon,
+  renderRichText,
+  titleFromPrompt,
+  upsertStreamMessage
+} from "./lib/display";
 import { readSseStream } from "./lib/stream";
-
-type Role = "system" | "user" | "assistant" | "tool";
-
-type ToolCall = {
-  id: string;
-  type: "function";
-  function: { name: string; arguments: string };
-};
-
-type Message = {
-  id: string;
-  role: Exclude<Role, "system" | "tool">;
-  content: string;
-  tool_calls?: ToolCall[];
-  attachments?: Attachment[];
-  createdAt?: string;
-  status?: "thinking" | "done" | "error";
-};
-
-type ToolMessage = {
-  id: string;
-  role: "tool";
-  content: string;
-  tool_call_id: string;
-  toolName?: string;
-  createdAt?: string;
-};
-
-type StoredMessage = Message | ToolMessage;
-
-type ApiSettings = {
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-};
-
-type Project = {
-  id: string;
-  name: string;
-  rootPath?: string;
-  conversations: ConversationSummary[];
-};
-
-type ConversationSummary = {
-  id: string;
-  title: string;
-  shortcut?: string;
-  updatedAt?: string;
-  messageCount?: number;
-};
-
-type Skill = {
-  id: string;
-  title: string;
-  description: string;
-  accent: string;
-  connected: boolean;
-  installed?: boolean;
-  source?: "builtin" | "user" | "discovered";
-  categories?: string[];
-  keywords?: string[];
-  toolNames?: string[];
-};
-
-type AppState = {
-  settings: ApiSettings & { configured?: boolean };
-  projects: Project[];
-  skills: Skill[];
-  automations: Array<{
-    id: string;
-    title: string;
-    schedule: string;
-    prompt: string;
-    enabled: boolean;
-    nextRunAt?: string;
-    lastRunAt?: string;
-    lastStatus?: "never" | "running" | "success" | "error";
-    lastResult?: string;
-    lastError?: string;
-    lastDocumentAttachmentId?: string;
-    lastDocumentName?: string;
-    runCount?: number;
-    conversationId?: string;
-    unreadCount?: number;
-    runs?: AutomationRun[];
-  }>;
-};
-
-type Automation = AppState["automations"][number];
-type AutomationRun = {
-  id: string;
-  trigger: "schedule" | "manual";
-  startedAt: string;
-  finishedAt?: string;
-  status: "running" | "success" | "error";
-  result?: string;
-  error?: string;
-  documentAttachmentId?: string;
-  documentName?: string;
-  unread?: boolean;
-};
-type AutomationPreview = {
-  title: string;
-  schedule: string;
-  prompt: string;
-  nextRunAt?: string;
-};
-type SearchResult = {
-  id: string;
-  title: string;
-  projectId: string;
-  type: string;
-};
-type WebBridgeStatus = {
-  running: boolean;
-  extension_connected: boolean;
-  port: number;
-  version: string;
-  extension_version?: string;
-};
-
-type AgentStreamEvent =
-  | { type: "step"; turn: number; message: string }
-  | { type: "assistant_tool_call"; turn: number; message: Message }
-  | { type: "tool_result"; turn: number; message: ToolMessage }
-  | {
-      type: "final";
-      turn: number;
-      message: Message;
-      conversation: { messages: StoredMessage[] };
-      toolCalls: unknown[];
-    }
-  | { type: "error"; error: string };
-type ProjectTreeNode = {
-  name: string;
-  path: string;
-  type: "file" | "dir";
-  children?: ProjectTreeNode[];
-};
-
-type Attachment = {
-  id: string;
-  conversationId: string;
-  originalName: string;
-  mimeType: string;
-  size: number;
-  kind: "image" | "text" | "file";
-  source?: "upload" | "artifact";
-  createdAt: string;
-  url: string;
-  derivedFrom?: string;
-};
-
-type Artifact = {
-  id: string;
-  title: string;
-  description: string;
-  href: string;
-  kind: "image" | "file" | "code" | "presentation" | "table";
-  filePath?: string;
-};
-
-type ToolRound = {
-  assistant?: Message;
-  toolResults: ToolMessage[];
-};
-
-type MessageDisplayItem =
-  | { type: "message"; message: Message }
-  | { type: "toolRound"; id: string; rounds: ToolRound[] };
+import type {
+  ActiveView,
+  AgentStreamEvent,
+  ApiSettings,
+  AppState,
+  Artifact,
+  Attachment,
+  Automation,
+  AutomationPreview,
+  ConversationSummary,
+  Message,
+  Project,
+  ProjectTreeNode,
+  SearchResult,
+  Skill,
+  StoredMessage,
+  ToolMessage,
+  WebBridgeStatus
+} from "./types";
 
 const defaultSettings: ApiSettings = {
   baseUrl: "https://api.openai.com/v1",
@@ -240,7 +109,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsStatus, setSettingsStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [mode, setMode] = useState<"agent" | "team">("agent");
-  const [activeView, setActiveView] = useState<"home" | "skills" | "automations" | "search" | "webbridge">("home");
+  const [activeView, setActiveView] = useState<ActiveView>("home");
   const [appError, setAppError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -817,101 +686,20 @@ function App() {
 
   return (
     <main className={`appShell ${isSidebarCollapsed ? "sidebarCollapsed" : ""}`}>
-      <aside className="sideRail">
-        <div className="windowChrome">
-          <button
-            className={`sidebarIconButton ${activeView === "search" ? "active" : ""}`}
-            type="button"
-            title="搜索"
-            onClick={() => setActiveView("search")}
-          >
-            <Search size={18} />
-          </button>
-          <button
-            className="sidebarIconButton sidebarToggle"
-            type="button"
-            title={isSidebarCollapsed ? "展开侧栏" : "收起侧栏"}
-            onClick={() => setIsSidebarCollapsed((value) => !value)}
-          >
-            <PanelLeft size={18} />
-          </button>
-        </div>
-
-        <div className="sideBrand">
-          <div className="sideBrandMark">
-            <Bot size={18} />
-          </div>
-          <div className="sideBrandText">
-            <strong>SuperCodex</strong>
-            <span>通用办公 Agent</span>
-          </div>
-        </div>
-
-        <nav className="primaryNav">
-          <button
-            className={`navButton ${activeView === "home" ? "active" : ""}`}
-            type="button"
-            onClick={createTask}
-          >
-            <PenLine size={19} />
-            <span className="navText">新建任务</span>
-            <kbd>⌘ K</kbd>
-          </button>
-          <button
-            className={`navButton ${activeView === "skills" ? "active" : ""}`}
-            type="button"
-            onClick={() => setActiveView("skills")}
-          >
-            <Grid3X3 size={19} />
-            <span className="navText">技能</span>
-          </button>
-          <button
-            className={`navButton ${activeView === "automations" ? "active" : ""}`}
-            type="button"
-            onClick={() => setActiveView("automations")}
-          >
-            <AlarmClock size={19} />
-            <span className="navText">定时任务</span>
-            {unreadAutomationCount > 0 && <span className="navBadge">{unreadAutomationCount}</span>}
-          </button>
-          <button
-            className={`navButton ${activeView === "webbridge" ? "active" : ""}`}
-            type="button"
-            onClick={() => {
-              setActiveView("webbridge");
-              refreshWebBridgeStatus();
-            }}
-          >
-            <Globe2 size={19} />
-            <span className="navText">WebBridge</span>
-          </button>
-        </nav>
-
-        <section className="sideSection">
-          <div className="sideLabel">历史记录</div>
-          <div className="historyList">
-            {historyItems.length === 0 ? (
-              <p className="sideHint">暂无历史对话</p>
-            ) : (
-              historyItems.map((conversation) => (
-                <button
-                  className={`conversationItem ${
-                    conversation.id === activeConversationId ? "active" : ""
-                  }`}
-                  type="button"
-                  key={conversation.id}
-                  onClick={() => loadMessages(conversation.id)}
-                >
-                  <span>
-                    <strong>{conversation.title}</strong>
-                    <small>{conversation.projectName}</small>
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        </section>
-      </aside>
+      <Sidebar
+        activeConversationId={activeConversationId}
+        activeView={activeView}
+        historyItems={historyItems}
+        isCollapsed={isSidebarCollapsed}
+        unreadAutomationCount={unreadAutomationCount}
+        onCreateTask={createTask}
+        onLoadMessages={loadMessages}
+        onSelectView={(view) => {
+          setActiveView(view);
+          if (view === "webbridge") refreshWebBridgeStatus();
+        }}
+        onToggleCollapsed={() => setIsSidebarCollapsed((value) => !value)}
+      />
 
       <section className="mainStage">
         <header className="stageTop">
@@ -934,62 +722,13 @@ function App() {
         )}
 
         {showSettings && (
-          <form className="settingsDock" aria-label="API 设置" onSubmit={(event) => saveSettings(event)}>
-            <label className="field">
-              <span>Base URL</span>
-              <input
-                type="text"
-                value={settings.baseUrl}
-                onChange={(event) => {
-                  setSettingsStatus("idle");
-                  setSettings({ ...settings, baseUrl: event.target.value });
-                }}
-                placeholder="https://api.openai.com/v1"
-              />
-            </label>
-            <label className="field">
-              <span>API Key</span>
-              <div className="secretInput">
-                <KeyRound size={16} />
-                <input
-                  type="password"
-                  value={settings.apiKey}
-                  onChange={(event) => {
-                    setSettingsStatus("idle");
-                    setSettings({ ...settings, apiKey: event.target.value });
-                  }}
-                  placeholder="留空则保留后端已有密钥"
-                />
-              </div>
-            </label>
-            <label className="field">
-              <span>Model</span>
-              <input
-                type="text"
-                value={settings.model}
-                onChange={(event) => {
-                  setSettingsStatus("idle");
-                  setSettings({ ...settings, model: event.target.value });
-                }}
-                placeholder="gpt-4.1 / deepseek-chat / ..."
-              />
-            </label>
-            <div className="settingsActions">
-              <span className={`settingsStatus ${settingsStatus}`}>
-                {settingsStatus === "saving"
-                  ? "保存中..."
-                  : settingsStatus === "saved"
-                    ? "已保存"
-                    : settingsStatus === "error"
-                      ? "保存失败"
-                      : ""}
-              </span>
-              <button className="confirmButton" type="submit" disabled={settingsStatus === "saving"}>
-                <Check size={16} />
-                确认
-              </button>
-            </div>
-          </form>
+          <SettingsDock
+            settings={settings}
+            status={settingsStatus}
+            onChange={setSettings}
+            onStatusReset={() => setSettingsStatus("idle")}
+            onSubmit={(event) => saveSettings(event)}
+          />
         )}
 
         <div
@@ -1803,308 +1542,6 @@ function App() {
       </section>
     </main>
   );
-}
-
-function titleFromPrompt(prompt: string) {
-  return prompt.length > 22 ? `${prompt.slice(0, 22)}...` : prompt;
-}
-
-function formatFileSize(size: number) {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function formatDateTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(date);
-}
-
-function formatAutomationStatus(automation: Automation) {
-  if (automation.lastStatus === "running") return "正在执行";
-  if (automation.lastStatus === "success") {
-    return `上次成功 ${automation.lastRunAt ? formatDateTime(automation.lastRunAt) : ""}`;
-  }
-  if (automation.lastStatus === "error") {
-    return `上次失败：${automation.lastError || "未知错误"}`;
-  }
-  return "尚未执行";
-}
-
-function renderRichText(content: string) {
-  const blocks = content
-    .replace(/```[\w-]*\n?/g, "\n")
-    .replace(/```/g, "\n")
-    .replace(/^\s*[-*_]{3,}\s*$/gm, "\n")
-    .replace(/^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/gm, "")
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter(Boolean);
-
-  return blocks.map((block, index) => {
-    const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
-    const firstLine = lines[0] || "";
-    const heading = firstLine.match(/^#{1,6}\s+(.+)$/);
-    if (heading) return <h3 key={index}>{renderInlineText(heading[1])}</h3>;
-
-    if (lines.every((line) => /^[-*]\s+/.test(line))) {
-      return (
-        <ul key={index}>
-          {lines.map((line, itemIndex) => (
-            <li key={itemIndex}>{renderInlineText(line.replace(/^[-*]\s+/, ""))}</li>
-          ))}
-        </ul>
-      );
-    }
-
-    if (lines.every((line) => /^\d+\.\s+/.test(line))) {
-      return (
-        <ol key={index}>
-          {lines.map((line, itemIndex) => (
-            <li key={itemIndex}>{renderInlineText(line.replace(/^\d+\.\s+/, ""))}</li>
-          ))}
-        </ol>
-      );
-    }
-
-    if (lines.length > 1 && lines.every((line) => line.startsWith("|") && line.endsWith("|"))) {
-      return (
-        <div className="softTable" key={index}>
-          {lines.map((line, rowIndex) => (
-            <div className="softTableRow" key={rowIndex}>
-              {line
-                .slice(1, -1)
-                .split("|")
-                .map((cell) => cell.trim())
-                .filter(Boolean)
-                .map((cell, cellIndex) => (
-                  <span key={cellIndex}>{renderInlineText(cell)}</span>
-                ))}
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    return <p key={index}>{renderInlineText(lines.join("\n"))}</p>;
-  });
-}
-
-function renderInlineText(value: string) {
-  const cleaned = value.replace(/^>\s?/, "").replace(/`([^`]+)`/g, "$1");
-  const parts = cleaned.split(/(\*\*[^*]+\*\*|__[^_]+__)/g).filter(Boolean);
-  return parts.map((part, index) => {
-    const strong = part.match(/^(?:\*\*|__)(.+)(?:\*\*|__)$/);
-    return strong ? <strong key={index}>{strong[1]}</strong> : <span key={index}>{part.replace(/\*([^*\n]+)\*/g, "$1")}</span>;
-  });
-}
-
-function getToolCallSummary(toolCall: ToolCall) {
-  const name = toolCall.function.name;
-  if (name === "search_web") return "正在搜索网页";
-  if (name === "fetch_url") return "正在读取网页内容";
-  if (name === "webbridge_command") return "正在操作真实浏览器";
-  if (name === "read_file" || name === "read_attachment") return "正在读取文件";
-  if (name === "write_file" || name === "replace_in_file") return "正在修改文件";
-  if (name === "transform_image") return "正在生成修改后的图片";
-  if (name === "run_tests") return "正在运行验证命令";
-  if (name === "run_command") return "正在运行命令";
-  return `正在调用 ${name}`;
-}
-
-function getToolSummary(message: ToolMessage) {
-  if (message.toolName === "search_web") return "网页搜索完成";
-  if (message.toolName === "fetch_url") return "网页读取完成";
-  if (message.toolName === "webbridge_command") return "浏览器操作完成";
-  if (message.toolName === "transform_image") return "图片处理完成";
-  if (message.toolName === "write_file" || message.toolName === "replace_in_file") return "文件修改完成";
-  if (message.toolName === "run_tests") return message.content.startsWith("Command failed") ? "验证未通过" : "验证完成";
-  return "工具执行完成";
-}
-
-function buildMessageDisplayItems(messages: StoredMessage[]): MessageDisplayItem[] {
-  const items: MessageDisplayItem[] = [];
-  for (let index = 0; index < messages.length; index++) {
-    const message = messages[index];
-    if (message.role === "tool") {
-      items.push({ type: "toolRound", id: `tool-${message.id}`, rounds: [{ toolResults: [message] }] });
-      continue;
-    }
-
-    if (message.role === "assistant" && message.tool_calls?.length) {
-      const rounds: ToolRound[] = [];
-      let nextIndex = index;
-      let itemId = message.id;
-
-      while (nextIndex < messages.length) {
-        const assistant = messages[nextIndex];
-        if (assistant.role !== "assistant" || !assistant.tool_calls?.length) break;
-
-        const toolResults: ToolMessage[] = [];
-        nextIndex++;
-        while (nextIndex < messages.length && messages[nextIndex].role === "tool") {
-          toolResults.push(messages[nextIndex] as ToolMessage);
-          nextIndex++;
-        }
-
-        rounds.push({ assistant, toolResults });
-      }
-
-      items.push({ type: "toolRound", id: itemId, rounds });
-      index = nextIndex - 1;
-      continue;
-    }
-
-    items.push({ type: "message", message });
-  }
-  return items;
-}
-
-function getToolRoundNarrative(round: ToolRound, roundIndex: number) {
-  const toolCalls = round.assistant?.tool_calls || [];
-  if (toolCalls.length === 0 && round.toolResults.length > 0) {
-    return round.toolResults.map(getToolSummary).join("，");
-  }
-
-  const actions = toolCalls.map(getToolCallSummary);
-  if (actions.length === 0) return `正在推进第 ${roundIndex + 1} 步。`;
-  const uniqueActions = [...new Set(actions)];
-  if (uniqueActions.length === 1) return uniqueActions[0];
-  return `正在处理：${uniqueActions.join("，")}。`;
-}
-
-function getToolSequenceSummary(toolCalls: ToolCall[], toolResults: ToolMessage[]) {
-  const names = [...toolCalls.map((toolCall) => toolCall.function.name), ...toolResults.map((result) => result.toolName)]
-    .filter((name): name is string => Boolean(name));
-  const toolCount = new Set(names).size || toolCalls.length || toolResults.length;
-  const callCount = toolCalls.length || toolResults.length;
-  const commandCount =
-    toolCalls.filter((toolCall) => toolCall.function.name === "run_command").length ||
-    toolResults.filter((result) => result.toolName === "run_command").length;
-  const parts = [`工具详情：${callCount} 次调用`];
-  if (toolCount > 1) parts.push(`${toolCount} 类工具`);
-  if (commandCount > 0) parts.push(`运行 ${commandCount} 个命令`);
-  return parts.join("，");
-}
-
-function formatToolRequest(toolCall: ToolCall) {
-  try {
-    return JSON.stringify(JSON.parse(toolCall.function.arguments || "{}"), null, 2);
-  } catch {
-    return toolCall.function.arguments || "{}";
-  }
-}
-
-function formatToolResponse(content: string) {
-  try {
-    return JSON.stringify(JSON.parse(content), null, 2);
-  } catch {
-    return content;
-  }
-}
-
-function cleanAssistantContent(content: string) {
-  return content
-    .replace(/<｜｜DSML｜｜tool_calls>[\s\S]*?<\/｜｜DSML｜｜tool_calls>/g, "")
-    .replace(/<\|\|DSML\|\|tool_calls>[\s\S]*?<\/\|\|DSML\|\|tool_calls>/g, "")
-    .trim();
-}
-
-function extractArtifacts(messages: StoredMessage[], projectId?: string): Artifact[] {
-  const artifacts = new Map<string, Artifact>();
-  for (const message of messages) {
-    if (message.role !== "tool") {
-      message.attachments?.forEach((attachment) => {
-        artifacts.set(attachment.id, {
-          id: attachment.id,
-          title: attachment.originalName,
-          description: attachment.kind === "image" ? "图片附件" : "文件附件",
-          href: attachment.url,
-          kind: attachment.kind === "image" ? "image" : "file"
-        });
-      });
-      continue;
-    }
-
-    const urlMatch = message.content.match(/URL:\s*(\/api\/attachments\/[^\s]+)/);
-    if (urlMatch) {
-      artifacts.set(`${message.id}-image`, {
-        id: `${message.id}-image`,
-        title: "处理后的图片",
-        description: message.toolName || "图片产物",
-        href: urlMatch[1],
-        kind: "image"
-      });
-    }
-
-    const fileMatches = [...message.content.matchAll(/^(?:File written|Updated|Generated file):\s*([^\n(]+)/gm)];
-    for (const [index, fileMatch] of fileMatches.entries()) {
-      const filePath = fileMatch[1].trim();
-      if (!filePath) continue;
-      artifacts.set(`${message.id}-file-${index}-${filePath}`, {
-        id: `${message.id}-file-${index}`,
-        title: filePath,
-        description: getArtifactDescription(filePath),
-        href: projectId ? `/api/projects/${projectId}/files/content?path=${encodeURIComponent(filePath)}` : "#",
-        kind: getArtifactKind(filePath),
-        filePath
-      });
-    }
-  }
-  return [...artifacts.values()].slice(-6);
-}
-
-function renderArtifactIcon(artifact: Artifact) {
-  if (artifact.kind === "image") return <ImageIcon size={17} />;
-  if (artifact.kind === "presentation") return <Presentation size={17} />;
-  if (artifact.kind === "code") return <FileCode size={17} />;
-  if (artifact.kind === "table") return <Table2 size={17} />;
-  return <FileText size={17} />;
-}
-
-function getArtifactKind(filePath: string): Artifact["kind"] {
-  const extension = filePath.split(".").pop()?.toLowerCase() || "";
-  if (["png", "jpg", "jpeg", "webp", "gif", "svg"].includes(extension)) return "image";
-  if (["ppt", "pptx"].includes(extension)) return "presentation";
-  if (["py", "js", "mjs", "ts", "tsx", "sh", "css", "json"].includes(extension)) return "code";
-  if (["csv", "xlsx", "xls"].includes(extension)) return "table";
-  return "file";
-}
-
-function getArtifactDescription(filePath: string) {
-  const extension = filePath.split(".").pop()?.toLowerCase() || "";
-  if (["ppt", "pptx"].includes(extension)) return `${extension.toUpperCase()} 演示文稿`;
-  if (["html", "htm"].includes(extension)) return "网页文件产物";
-  if (["png", "jpg", "jpeg", "webp", "gif"].includes(extension)) return "图片文件产物";
-  if (["csv", "xlsx", "xls"].includes(extension)) return "表格数据产物";
-  if (["py", "js", "mjs", "ts", "tsx", "sh"].includes(extension)) return `${extension.toUpperCase()} 脚本文件`;
-  return "项目文件产物";
-}
-
-function removeMessage(messages: StoredMessage[], id: string) {
-  return messages.filter((message) => message.id !== id);
-}
-
-function upsertStreamMessage(messages: StoredMessage[], nextMessage: StoredMessage) {
-  const index = messages.findIndex((message) => message.id === nextMessage.id);
-  if (index < 0) return [...messages, nextMessage];
-  return messages.map((message, currentIndex) => (currentIndex === index ? nextMessage : message));
-}
-
-function flattenProjectTree(nodes: ProjectTreeNode[], prefix = ""): ProjectTreeNode[] {
-  return nodes.flatMap((node) => {
-    const visibleNode = {
-      ...node,
-      path: prefix ? `${prefix}/${node.name}` : node.path
-    };
-    return [visibleNode, ...flattenProjectTree(node.children || [], visibleNode.path)];
-  });
 }
 
 export default App;
