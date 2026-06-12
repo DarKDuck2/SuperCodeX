@@ -27,10 +27,10 @@ const legacyUploadDir = path.join(dataDir, "uploads");
 const conversationsDir = path.join(dataDir, "conversations");
 const workspaceFilesDirName = "supercodex-files";
 const maxAgentTurns = Number(process.env.MAX_AGENT_TURNS ?? 200);
-const maxOutputTokens = Number(process.env.MAX_OUTPUT_TOKENS ?? 1600);
+const maxOutputTokens = Number(process.env.MAX_OUTPUT_TOKENS ?? 160000);
 const recentContextMessageLimit = Number(process.env.RECENT_CONTEXT_MESSAGES ?? 24);
 const maxContextToolChars = Number(process.env.MAX_CONTEXT_TOOL_CHARS ?? 600_000);
-const maxContextMessageChars = Number(process.env.MAX_CONTEXT_MESSAGE_CHARS ?? 10_000);
+const maxContextMessageChars = Number(process.env.MAX_CONTEXT_MESSAGE_CHARS ?? 20_000);
 const maxToolResultChars = Number(process.env.MAX_TOOL_RESULT_CHARS ?? 12_000);
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -195,6 +195,7 @@ type PublicAttachment = Omit<Attachment, "path" | "fileName"> & {
 };
 
 type Store = {
+  settings?: ApiConfig;
   projects: Project[];
   conversations: Conversation[];
   skills: Skill[];
@@ -229,6 +230,24 @@ type WebSearchPayload = {
   totalResults: number;
   results: WebSearchResult[];
   partialFailures?: unknown[];
+};
+
+type WebSearchOptions = {
+  engines?: string[];
+  searchMode?: "request" | "auto" | "playwright";
+};
+
+type RankedWebSearchResult = WebSearchResult & {
+  rankScore: number;
+  domain: string;
+  matchedTerms: string[];
+  qualitySignals: string[];
+  fetched?: {
+    title?: string;
+    description?: string;
+    excerpt: string;
+  };
+  fetchError?: string;
 };
 
 type AgentResult = {
@@ -388,18 +407,13 @@ const builtinSkillCatalog: Skill[] = [
   }
 ];
 
-const systemPrompt = [
-  "You are SuperCodex, a general office agent.",
-  "Help with workplace tasks such as email, documents, research, planning, automation, meetings, operations, and cross-app workflows.",
-  "Be practical, concise, and action-oriented.",
-  "Use tools only when they are necessary to complete the task.",
-  "When you call tools, include one brief sentence in your assistant content explaining what you understood and what you are about to check or change. Keep raw tool details out of that sentence.",
-  "Use discover_or_load_skill when the user's request needs a capability that is not currently loaded or when a better skill/tool package may exist.",
-  "After loading a relevant skill, continue the task with the expanded tool plan instead of stopping at installation advice.",
-  "Operate fully automatically within the available tools. Do not ask the user to approve routine tool use.",
-  "Never delete files, wipe directories, reset repositories, format disks, escalate privileges, or perform destructive cleanup. If a requested task requires deletion, explain that it was blocked by the automatic safety policy and offer a non-destructive alternative.",
-  "When browser or web tools return HTML, DOM, or raw JSON, never echo it verbatim. Extract the useful facts, page title, visible text, links, and next actions instead."
+const systemPromptPath = path.join(workspaceRoot, "docs", "AGENT_SYSTEM_PROMPT.md");
+const fallbackSystemPrompt = [
+  "You are SuperCodex, a high-agency general office agent.",
+  "Work autonomously, use tools when useful, create polished deliverables, and answer in the user's language.",
+  "Never perform destructive cleanup or echo raw HTML, DOM, or JSON from browser tools."
 ].join(" ");
+const systemPrompt = await loadSystemPrompt(systemPromptPath);
 
 const projects = new Map<string, Project>();
 const conversations = new Map<string, Conversation>();
@@ -435,11 +449,12 @@ app.get("/api/settings", (_req, res) => {
   res.json(maskSettings());
 });
 
-app.put("/api/settings", (req, res) => {
+app.put("/api/settings", async (req, res) => {
   const body = req.body as ApiConfig;
   if (typeof body.baseUrl === "string") settings.baseUrl = body.baseUrl.trim();
   if (typeof body.apiKey === "string") settings.apiKey = body.apiKey.trim();
   if (typeof body.model === "string") settings.model = body.model.trim();
+  await persistStore();
   res.json(maskSettings());
 });
 
@@ -1666,7 +1681,21 @@ function registerTools() {
           type: "object",
           properties: {
             query: { type: "string", description: "Search query" },
-            num: { type: "number", description: "Number of results" }
+            num: { type: "number", description: "Number of final ranked results, 1-8" },
+            engines: {
+              type: "array",
+              items: { type: "string" },
+              description: "Optional search engines to combine: bing, duckduckgo, brave, startpage, baidu, sogou, exa, csdn, juejin, linuxdo"
+            },
+            searchMode: {
+              type: "string",
+              enum: ["request", "auto", "playwright"],
+              description: "Optional open-websearch mode. playwright can improve Bing quality but is slower."
+            },
+            fetchTop: {
+              type: "number",
+              description: "Fetch readable content from the top N ranked pages for verification, 0-4. Defaults to 3."
+            }
           },
           required: ["query"]
         }
@@ -1682,18 +1711,45 @@ function registerTools() {
     async (args) => {
       const query = String(args.query || "");
       const num = Math.max(1, Math.min(Number(args.num) || 5, 8));
-      const payload = await openWebSearch(query, num);
-      if (!payload.results.length) return "No results found.";
-      return payload.results
+      const engines = parseSearchEngines(args.engines);
+      const searchMode = parseSearchMode(args.searchMode);
+      const fetchTop = Math.max(0, Math.min(Number(args.fetchTop ?? 3) || 0, 4));
+      const requestedLimit = Math.min(50, Math.max(num * 3, num * Math.max(1, engines.length)));
+      const payload = await openWebSearch(query, requestedLimit, { engines, searchMode });
+      if (!payload.results.length) {
+        const failures = payload.partialFailures?.length ? `\nPartial failures: ${JSON.stringify(payload.partialFailures).slice(0, 1000)}` : "";
+        return `No results found.${failures}`;
+      }
+      const ranked = rankWebSearchResults(query, payload.results).slice(0, num);
+      await attachFetchedExcerpts(ranked, fetchTop);
+      const failureNote = payload.partialFailures?.length
+        ? `\n\nPartial search failures:\n${JSON.stringify(payload.partialFailures, null, 2).slice(0, 1500)}`
+        : "";
+      return [
+        `Search query: ${payload.query}`,
+        `Engines: ${payload.engines.join(", ")}`,
+        `Retrieved: ${payload.totalResults}; returned ranked: ${ranked.length}`,
+        "",
+        ...ranked
         .map((result, index) =>
           [
             `${index + 1}. ${result.title}`,
             `URL: ${result.url}`,
+            `Domain: ${result.domain}`,
+            `Score: ${result.rankScore}`,
             result.description ? `Description: ${result.description}` : "",
-            result.engine ? `Engine: ${result.engine}` : ""
+            result.engine ? `Engine: ${result.engine}` : "",
+            result.qualitySignals.length ? `Signals: ${result.qualitySignals.join(", ")}` : "",
+            result.matchedTerms.length ? `Matched terms: ${result.matchedTerms.join(", ")}` : "",
+            result.fetched?.title ? `Fetched title: ${result.fetched.title}` : "",
+            result.fetched?.description ? `Fetched description: ${result.fetched.description}` : "",
+            result.fetched?.excerpt ? `Fetched excerpt: ${result.fetched.excerpt}` : "",
+            result.fetchError ? `Fetch warning: ${result.fetchError}` : ""
           ].filter(Boolean).join("\n")
         )
-        .join("\n\n");
+        .join("\n\n"),
+        failureNote
+      ].filter(Boolean).join("\n");
     }
   );
 
@@ -1775,6 +1831,16 @@ function registerTool(
 
 function getToolDefinitions() {
   return toolRegistry.definitions();
+}
+
+async function loadSystemPrompt(promptPath: string) {
+  try {
+    const content = await fs.readFile(promptPath, "utf8");
+    return content.trim() || fallbackSystemPrompt;
+  } catch (error) {
+    console.warn(`System prompt document unavailable at ${promptPath}; using fallback prompt.`);
+    return fallbackSystemPrompt;
+  }
 }
 
 function buildAgentContextMessages(conversation: Conversation, context: ToolContext, outputRelativePath: string): ChatMessage[] {
@@ -2227,6 +2293,9 @@ async function initializeStore() {
   try {
     const raw = await fs.readFile(dataFile, "utf-8");
     const store = JSON.parse(raw) as Store;
+    if (typeof store.settings?.baseUrl === "string") settings.baseUrl = store.settings.baseUrl;
+    if (typeof store.settings?.apiKey === "string") settings.apiKey = store.settings.apiKey;
+    if (typeof store.settings?.model === "string") settings.model = store.settings.model;
     store.projects.forEach((project) => projects.set(project.id, project));
     store.conversations.forEach((conversation) => conversations.set(conversation.id, conversation));
     store.skills.forEach((skill) => skills.set(skill.id, skill));
@@ -2249,6 +2318,11 @@ async function initializeStore() {
 async function persistStore() {
   await fs.mkdir(dataDir, { recursive: true });
   const store: Store = {
+    settings: {
+      baseUrl: settings.baseUrl,
+      apiKey: settings.apiKey,
+      model: settings.model
+    },
     projects: [...projects.values()],
     conversations: [...conversations.values()],
     skills: [...skills.values()],
@@ -3056,11 +3130,17 @@ function decodeHtmlEntities(text: string) {
   });
 }
 
-async function openWebSearch(query: string, limit: number): Promise<WebSearchPayload> {
+const supportedSearchEngines = new Set(["bing", "duckduckgo", "exa", "brave", "baidu", "csdn", "linuxdo", "juejin", "startpage", "sogou"]);
+const defaultSearchEngines = ["bing", "duckduckgo", "brave"];
+
+async function openWebSearch(query: string, limit: number, options: WebSearchOptions = {}): Promise<WebSearchPayload> {
   const binPath = path.join(workspaceRoot, "node_modules", ".bin", "open-websearch");
+  const args = ["search", query, "--limit", String(Math.max(1, Math.min(limit, 50))), "--json"];
+  if (options.engines?.length) args.push("--engines", options.engines.join(","));
+  if (options.searchMode && options.searchMode !== "auto") args.push("--search-mode", options.searchMode);
   const { stdout, stderr } = await execFileAsync(
     binPath,
-    ["search", query, "--limit", String(Math.max(1, Math.min(limit, 8))), "--json"],
+    args,
     {
       cwd: workspaceRoot,
       timeout: 45_000,
@@ -3076,6 +3156,156 @@ async function openWebSearch(query: string, limit: number): Promise<WebSearchPay
     throw new Error(envelope.error?.message ?? "open-websearch failed");
   }
   return envelope.data as WebSearchPayload;
+}
+
+function parseSearchEngines(value: unknown) {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : process.env.SEARCH_WEB_ENGINES?.split(",");
+  const engines = (raw || defaultSearchEngines)
+    .map((engine) => String(engine).trim().toLowerCase())
+    .filter((engine, index, array) => supportedSearchEngines.has(engine) && array.indexOf(engine) === index);
+  return engines.length ? engines : defaultSearchEngines;
+}
+
+function parseSearchMode(value: unknown): WebSearchOptions["searchMode"] {
+  if (value === "request" || value === "auto" || value === "playwright") return value;
+  const envValue = process.env.SEARCH_WEB_MODE;
+  return envValue === "request" || envValue === "auto" || envValue === "playwright" ? envValue : undefined;
+}
+
+function rankWebSearchResults(query: string, results: WebSearchResult[]): RankedWebSearchResult[] {
+  const terms = tokenizeSearchQuery(query);
+  const seen = new Set<string>();
+  return results
+    .map((result) => enrichSearchResult(result, terms))
+    .filter((result) => {
+      const key = canonicalResultKey(result.url);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => b.rankScore - a.rankScore);
+}
+
+function enrichSearchResult(result: WebSearchResult, terms: string[]): RankedWebSearchResult {
+  const domain = domainFromUrl(result.url);
+  const text = `${result.title} ${result.description || ""} ${domain}`.toLowerCase();
+  const matchedTerms = terms.filter((term) => text.includes(term));
+  const qualitySignals: string[] = [];
+  let score = 10 + matchedTerms.length * 8;
+
+  if (result.title && terms.some((term) => result.title.toLowerCase().includes(term))) score += 8;
+  if (result.description && terms.some((term) => result.description!.toLowerCase().includes(term))) score += 4;
+  if (/\.(gov|edu)(\.[a-z]{2})?$/i.test(domain)) {
+    score += 18;
+    qualitySignals.push("government-or-education-domain");
+  }
+  if (/(^|\.)((docs|developer|developers|support|help|learn)\.)/.test(domain) || /\/(docs|documentation|developer|developers|blog|news|press|releases)\b/i.test(result.url)) {
+    score += 12;
+    qualitySignals.push("documentation-or-official-section");
+  }
+  if (/\b(official|官网|官方|docs|documentation|release|announcement|公告|发布)\b/i.test(`${result.title} ${result.description || ""}`)) {
+    score += 8;
+    qualitySignals.push("official-or-announcement-language");
+  }
+  if (/\b(20[2-9][0-9]|today|yesterday|latest|最新|今天|昨日|昨天)\b/i.test(`${result.title} ${result.description || ""}`)) {
+    score += 4;
+    qualitySignals.push("freshness-language");
+  }
+  if (/(baike\.baidu\.com|wikipedia\.org|zhihu\.com|csdn\.net|blog\.csdn\.net|jianshu\.com|medium\.com|apifox\.com|openai\.ac\.cn)/i.test(domain)) {
+    score -= 8;
+    qualitySignals.push("secondary-or-seo-prone-domain");
+  }
+  if (/(utm_|spm=|ref=|source=)/i.test(result.url)) score -= 2;
+  if (result.engine) qualitySignals.push(`engine:${result.engine}`);
+
+  return {
+    ...result,
+    domain,
+    matchedTerms,
+    qualitySignals,
+    rankScore: Math.max(0, Math.round(score))
+  };
+}
+
+function tokenizeSearchQuery(query: string) {
+  const normalized = query
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s.-]+/gu, " ")
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean);
+  return [...new Set(normalized.filter((term) => term.length > 1 && !/^(the|and|for|with|what|when|怎么|如何|什么|一个)$/.test(term)))].slice(0, 12);
+}
+
+function canonicalResultKey(url: string) {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = "";
+    for (const key of [...parsed.searchParams.keys()]) {
+      if (/^(utm_|spm|ref|source|fbclid|gclid)/i.test(key)) parsed.searchParams.delete(key);
+    }
+    const pathName = parsed.pathname.replace(/\/+$/, "") || "/";
+    return `${parsed.hostname.replace(/^www\./, "").toLowerCase()}${pathName}${parsed.search}`;
+  } catch {
+    return "";
+  }
+}
+
+function domainFromUrl(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+async function attachFetchedExcerpts(results: RankedWebSearchResult[], fetchTop: number) {
+  const targets = results.slice(0, fetchTop);
+  await Promise.all(
+    targets.map(async (result) => {
+      try {
+        result.fetched = await fetchReadablePageExcerpt(result.url);
+        result.rankScore += 6;
+        result.qualitySignals.push("content-fetched");
+      } catch (error) {
+        result.fetchError = error instanceof Error ? error.message : String(error);
+      }
+    })
+  );
+}
+
+async function fetchReadablePageExcerpt(url: string) {
+  if (!/^https?:\/\//i.test(url)) throw new Error("unsupported URL scheme");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "user-agent": "SuperCodex search verifier (+local research tool)"
+      }
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const contentType = response.headers.get("content-type") || "";
+    const text = await response.text();
+    if (contentType.includes("application/json")) {
+      return { excerpt: compactJsonText(text, 1800) };
+    }
+    if (!contentType.includes("text/html") && !looksLikeHtml(text)) {
+      return { excerpt: normalizeWhitespace(stripAnsi(text)).slice(0, 1800) };
+    }
+    const title = extractTagContent(text, "title");
+    const description = extractMetaDescription(text);
+    const excerpt = htmlToReadableText(text).slice(0, 2200);
+    if (!excerpt) throw new Error("no readable text extracted");
+    return { title, description, excerpt };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function parseOpenWebSearchJson(output: string) {
