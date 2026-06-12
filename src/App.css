@@ -405,9 +405,10 @@ kbd {
   z-index: 5;
   top: 56px;
   right: 26px;
-  width: min(760px, calc(100vw - 360px));
+  width: min(860px, calc(100vw - 360px));
   display: grid;
-  grid-template-columns: 1.1fr 1fr 0.8fr;
+  grid-template-columns: 1.1fr 1fr 0.85fr auto;
+  align-items: end;
   gap: 12px;
   padding: 14px;
   border: 1px solid #e4e7eb;
@@ -449,6 +450,45 @@ kbd {
   flex-direction: row;
   gap: 8px;
   color: #737980;
+}
+
+.settingsActions {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settingsStatus {
+  min-width: 48px;
+  color: #7a828c;
+  font-size: 12px;
+}
+
+.settingsStatus.saved {
+  color: #2f8f4e;
+}
+
+.settingsStatus.error {
+  color: #c9353e;
+}
+
+.confirmButton {
+  min-height: 40px;
+  border: 0;
+  border-radius: 9px;
+  background: #202124;
+  color: #fff;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 650;
+}
+
+.confirmButton:disabled {
+  cursor: default;
+  opacity: 0.65;
 }
 
 .heroWork {

@@ -203,6 +203,12 @@ npm test
 
 如果用户明确指定了输出路径，例如 `docs/report.md` 或某个工作区内的绝对路径，SuperCodex 会按指定路径写入；否则裸文件名如 `report.md`、`chart.html`、`draft.py` 都会落到 `supercodex-files/`。产物卡片会直接链接到对应文件，前端点击即可打开。
 
+## 系统提示词维护
+
+Agent 的系统提示词不再写死在 `server/index.ts` 中，而是维护在 `docs/AGENT_SYSTEM_PROMPT.md`。后端启动时会读取该文档作为系统提示词；如果文档缺失或为空，会自动使用一个极简兜底提示词。
+
+调整 Agent 行为、工具使用习惯、办公/学术工作质量标准、PPT 和 HTML 产物审美标准时，优先修改该文档。
+
 ## Agent 工具清单
 
 当前内置工具：

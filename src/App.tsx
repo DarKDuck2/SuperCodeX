@@ -238,6 +238,7 @@ function App() {
   const [isWorking, setIsWorking] = useState(false);
   const [isBooting, setIsBooting] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsStatus, setSettingsStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [mode, setMode] = useState<"agent" | "team">("agent");
   const [activeView, setActiveView] = useState<"home" | "skills" | "automations" | "search" | "webbridge">("home");
   const [appError, setAppError] = useState("");
@@ -415,24 +416,34 @@ function App() {
     return conversation.id;
   }
 
-  async function saveSettings(nextSettings = settings) {
+  async function saveSettings(event?: FormEvent, nextSettings = settings) {
+    event?.preventDefault();
+    setSettingsStatus("saving");
     const body: ApiSettings | Omit<ApiSettings, "apiKey"> = nextSettings.apiKey
       ? nextSettings
       : {
           baseUrl: nextSettings.baseUrl,
           model: nextSettings.model
         };
-    const response = await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-    const payload = (await response.json()) as ApiSettings;
-    setSettings({
-      baseUrl: payload.baseUrl || nextSettings.baseUrl,
-      apiKey: nextSettings.apiKey,
-      model: payload.model || nextSettings.model
-    });
+    try {
+      const response = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!response.ok) throw new Error("API 设置保存失败");
+      const payload = (await response.json()) as ApiSettings;
+      setSettings({
+        baseUrl: payload.baseUrl || nextSettings.baseUrl,
+        apiKey: nextSettings.apiKey,
+        model: payload.model || nextSettings.model
+      });
+      setAppError("");
+      setSettingsStatus("saved");
+    } catch (error) {
+      setSettingsStatus("error");
+      setAppError(error instanceof Error ? error.message : "API 设置保存失败");
+    }
   }
 
   async function sendMessage(event: FormEvent) {
@@ -923,13 +934,16 @@ function App() {
         )}
 
         {showSettings && (
-          <section className="settingsDock" aria-label="API 设置">
+          <form className="settingsDock" aria-label="API 设置" onSubmit={(event) => saveSettings(event)}>
             <label className="field">
               <span>Base URL</span>
               <input
+                type="text"
                 value={settings.baseUrl}
-                onBlur={() => saveSettings()}
-                onChange={(event) => setSettings({ ...settings, baseUrl: event.target.value })}
+                onChange={(event) => {
+                  setSettingsStatus("idle");
+                  setSettings({ ...settings, baseUrl: event.target.value });
+                }}
                 placeholder="https://api.openai.com/v1"
               />
             </label>
@@ -940,22 +954,42 @@ function App() {
                 <input
                   type="password"
                   value={settings.apiKey}
-                  onBlur={() => saveSettings()}
-                  onChange={(event) => setSettings({ ...settings, apiKey: event.target.value })}
-                  placeholder="只保存在当前页面状态"
+                  onChange={(event) => {
+                    setSettingsStatus("idle");
+                    setSettings({ ...settings, apiKey: event.target.value });
+                  }}
+                  placeholder="留空则保留后端已有密钥"
                 />
               </div>
             </label>
             <label className="field">
               <span>Model</span>
               <input
+                type="text"
                 value={settings.model}
-                onBlur={() => saveSettings()}
-                onChange={(event) => setSettings({ ...settings, model: event.target.value })}
+                onChange={(event) => {
+                  setSettingsStatus("idle");
+                  setSettings({ ...settings, model: event.target.value });
+                }}
                 placeholder="gpt-4.1 / deepseek-chat / ..."
               />
             </label>
-          </section>
+            <div className="settingsActions">
+              <span className={`settingsStatus ${settingsStatus}`}>
+                {settingsStatus === "saving"
+                  ? "保存中..."
+                  : settingsStatus === "saved"
+                    ? "已保存"
+                    : settingsStatus === "error"
+                      ? "保存失败"
+                      : ""}
+              </span>
+              <button className="confirmButton" type="submit" disabled={settingsStatus === "saving"}>
+                <Check size={16} />
+                确认
+              </button>
+            </div>
+          </form>
         )}
 
         <div
