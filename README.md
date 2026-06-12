@@ -21,6 +21,7 @@ SuperCodex 当前适合本地个人工作台和小团队内测，不建议直接
 - Agent 上下文会保留摘要和最近消息窗口，并对工具结果做预算截断，降低长任务 token 消耗。
 - 本地项目加载，可让 Agent 读取、搜索、修改项目文件并运行测试。
 - 文件和图片附件上传，支持通过加号菜单或粘贴添加。
+- PDF、Word、PPTX、CSV/XLSX 附件会进入专用解析工具，支持一句话触发摘要、审查、表格分析和演示文稿检查。
 - 图片处理能力，支持缩放、裁剪、旋转、灰度、模糊、锐化、翻转和格式转换。
 - 网络搜索能力，基于 `open-websearch`。
 - Kimi WebBridge 集成，可连接真实浏览器执行网页任务。
@@ -224,6 +225,11 @@ Agent 的系统提示词不再写死在 `server/index.ts` 中，而是维护在 
 | `run_tests` | 运行测试、lint 或构建命令 |
 | `list_attachments` | 列出当前会话附件 |
 | `read_attachment` | 读取文本附件或返回附件元信息 |
+| `extract_pdf_text` | 提取 PDF 附件正文 |
+| `read_spreadsheet` | 读取 CSV/XLSX 附件的 sheet、表头和样例行 |
+| `create_spreadsheet` | 生成 XLSX 工作簿产物 |
+| `extract_docx_text` | 提取 Word DOCX 附件正文 |
+| `inspect_presentation` | 提取 PPTX 幻灯片文本结构 |
 | `transform_image` | 修改图片并生成新附件 |
 | `fetch_url` | 抓取网页并提取可读内容 |
 | `search_web` | 调用 open-websearch 搜索网页 |

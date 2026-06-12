@@ -2,9 +2,13 @@ import cors from "cors";
 import "dotenv/config";
 import express from "express";
 import multer from "multer";
+import { XMLParser } from "fast-xml-parser";
+import JSZip from "jszip";
+import mammoth from "mammoth";
 import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { PDFParse } from "pdf-parse";
 import { promisify } from "node:util";
 import sharp from "sharp";
 import { computeNextRunAt, normalizeScheduleText, parseAutomationInput } from "./automation/schedule.js";
@@ -14,6 +18,14 @@ import { executeStructuredCommand, normalizeCommandInput } from "./tools/command
 import { ToolRegistry } from "./tools/registry.js";
 import { runRegisteredTool } from "./tools/runtime.js";
 import { selectToolsForTask } from "./tools/selection.js";
+import { compactJsonText, formatFetchedPage, htmlToReadableText, looksLikeHtml } from "./web/readability.js";
+import {
+  attachFetchedExcerpts,
+  openWebSearch,
+  parseSearchEngines,
+  parseSearchMode,
+  rankWebSearchResults
+} from "./web/search.js";
 import type { ToolRuntimeResult } from "./tools/runtime.js";
 import type { ToolCall, ToolContext, ToolDefinition, ToolHandler, ToolMetadata, ToolTrace } from "./tools/types.js";
 
@@ -35,6 +47,12 @@ const maxToolResultChars = Number(process.env.MAX_TOOL_RESULT_CHARS ?? 12_000);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024, files: 12 }
+});
+const officeXmlParser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: "",
+  removeNSPrefix: true,
+  textNodeName: "#text"
 });
 
 type Role = "system" | "user" | "assistant" | "tool";
@@ -216,40 +234,6 @@ type ChatCompletionResponse = {
   error?: { message?: string };
 };
 
-type WebSearchResult = {
-  title: string;
-  url: string;
-  description?: string;
-  source?: string;
-  engine?: string;
-};
-
-type WebSearchPayload = {
-  query: string;
-  engines: string[];
-  totalResults: number;
-  results: WebSearchResult[];
-  partialFailures?: unknown[];
-};
-
-type WebSearchOptions = {
-  engines?: string[];
-  searchMode?: "request" | "auto" | "playwright";
-};
-
-type RankedWebSearchResult = WebSearchResult & {
-  rankScore: number;
-  domain: string;
-  matchedTerms: string[];
-  qualitySignals: string[];
-  fetched?: {
-    title?: string;
-    description?: string;
-    excerpt: string;
-  };
-  fetchError?: string;
-};
-
 type AgentResult = {
   finalMessage: Message;
   toolCalls: Array<{ id: string; name: string; args: string; result: string; trace?: ToolTrace }>;
@@ -331,7 +315,7 @@ const builtinSkillCatalog: Skill[] = [
     source: "builtin",
     categories: ["presentation", "office"],
     keywords: ["ppt", "pptx", "slides", "幻灯片", "演示", "讲稿"],
-    toolNames: ["write_file", "run_command", "read_attachment"]
+    toolNames: ["inspect_presentation", "write_file", "run_command", "read_attachment"]
   },
   {
     id: "pdf",
@@ -343,7 +327,7 @@ const builtinSkillCatalog: Skill[] = [
     source: "builtin",
     categories: ["pdf", "documents", "office"],
     keywords: ["pdf", "提取", "转换", "阅读", "摘要"],
-    toolNames: ["read_attachment", "write_file", "run_command"]
+    toolNames: ["extract_pdf_text", "read_attachment", "write_file", "run_command"]
   },
   {
     id: "search",
@@ -379,7 +363,7 @@ const builtinSkillCatalog: Skill[] = [
     source: "builtin",
     categories: ["spreadsheet", "office"],
     keywords: ["excel", "xlsx", "csv", "表格", "数据", "公式", "sheet"],
-    toolNames: ["read_attachment", "write_file", "run_command"]
+    toolNames: ["read_spreadsheet", "create_spreadsheet", "read_attachment", "write_file", "run_command"]
   },
   {
     id: "documents",
@@ -391,7 +375,7 @@ const builtinSkillCatalog: Skill[] = [
     source: "builtin",
     categories: ["documents", "office"],
     keywords: ["docx", "word", "文档", "报告", "润色", "写作"],
-    toolNames: ["read_attachment", "write_file", "run_command"]
+    toolNames: ["extract_docx_text", "read_attachment", "write_file", "run_command"]
   },
   {
     id: "webbridge",
@@ -926,7 +910,7 @@ app.get("/api/web/search", async (req, res) => {
   }
 
   try {
-    res.json(await openWebSearch(query, limit));
+    res.json(await openWebSearch(workspaceRoot, query, limit));
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : "Unknown search error" });
   }
@@ -1540,6 +1524,231 @@ function registerTools() {
     {
       type: "function",
       function: {
+        name: "extract_pdf_text",
+        description: "Extract readable text from an uploaded PDF attachment for summary, review, citation, or conversion tasks.",
+        parameters: {
+          type: "object",
+          properties: {
+            attachmentId: { type: "string", description: "PDF attachment id from list_attachments" },
+            pages: {
+              type: "array",
+              items: { type: "number" },
+              description: "Optional 1-based page numbers to extract. Omit to extract the full PDF."
+            },
+            maxChars: { type: "number", description: "Maximum characters to return, 2000-50000. Defaults to 20000." }
+          },
+          required: ["attachmentId"]
+        }
+      }
+    },
+    {
+      riskLevel: "read",
+      permissions: ["attachments:read"],
+      timeoutMs: 30_000,
+      categories: ["pdf", "documents", "office", "research"],
+      skillIds: ["pdf", "documents", "academic"]
+    },
+    async (args, context) => {
+      const attachment = requireAttachment(context, String(args.attachmentId || ""));
+      if (!isPdfAttachment(attachment)) throw new Error("Attachment is not a PDF");
+      const maxChars = clampNumber(args.maxChars, 2_000, 50_000, 20_000);
+      const pages = Array.isArray(args.pages)
+        ? args.pages.map((page) => Number(page)).filter((page) => Number.isInteger(page) && page > 0)
+        : undefined;
+      const text = await extractPdfAttachmentText(attachment.path, pages);
+      const compact = compactOfficeText(text, maxChars);
+      return {
+        ok: true,
+        summary: [
+          `PDF extracted: ${attachment.originalName}`,
+          pages?.length ? `Pages: ${pages.join(", ")}` : "Pages: all available pages",
+          `Characters returned: ${compact.length}`,
+          "",
+          compact || "(No readable text found. The PDF may be scanned or image-only.)"
+        ].join("\n"),
+        metadata: { attachmentId: attachment.id, originalName: attachment.originalName, pages }
+      };
+    }
+  );
+
+  registerTool(
+    {
+      type: "function",
+      function: {
+        name: "read_spreadsheet",
+        description: "Read an uploaded CSV/XLS/XLSX spreadsheet and return workbook sheets, headers, sample rows, and basic dimensions.",
+        parameters: {
+          type: "object",
+          properties: {
+            attachmentId: { type: "string", description: "Spreadsheet attachment id from list_attachments" },
+            sheet: { type: "string", description: "Optional sheet name to inspect for XLSX files" },
+            maxRows: { type: "number", description: "Maximum rows per sheet to return, 5-100. Defaults to 30." },
+            maxColumns: { type: "number", description: "Maximum columns per row to return, 3-50. Defaults to 20." }
+          },
+          required: ["attachmentId"]
+        }
+      }
+    },
+    {
+      riskLevel: "read",
+      permissions: ["attachments:read"],
+      timeoutMs: 20_000,
+      categories: ["spreadsheet", "office"],
+      skillIds: ["excel"]
+    },
+    async (args, context) => {
+      const attachment = requireAttachment(context, String(args.attachmentId || ""));
+      if (!isSpreadsheetAttachment(attachment)) throw new Error("Attachment is not a supported spreadsheet");
+      const maxRows = clampNumber(args.maxRows, 5, 100, 30);
+      const maxColumns = clampNumber(args.maxColumns, 3, 50, 20);
+      const result = await readSpreadsheetAttachment(attachment, String(args.sheet || ""), maxRows, maxColumns);
+      return {
+        ok: true,
+        summary: result,
+        metadata: { attachmentId: attachment.id, originalName: attachment.originalName }
+      };
+    }
+  );
+
+  registerTool(
+    {
+      type: "function",
+      function: {
+        name: "extract_docx_text",
+        description: "Extract readable text from an uploaded Word DOCX attachment for rewriting, summary, or report tasks.",
+        parameters: {
+          type: "object",
+          properties: {
+            attachmentId: { type: "string", description: "DOCX attachment id from list_attachments" },
+            maxChars: { type: "number", description: "Maximum characters to return, 2000-50000. Defaults to 20000." }
+          },
+          required: ["attachmentId"]
+        }
+      }
+    },
+    {
+      riskLevel: "read",
+      permissions: ["attachments:read"],
+      timeoutMs: 20_000,
+      categories: ["documents", "office"],
+      skillIds: ["documents"]
+    },
+    async (args, context) => {
+      const attachment = requireAttachment(context, String(args.attachmentId || ""));
+      if (!isDocxAttachment(attachment)) throw new Error("Attachment is not a DOCX file");
+      const maxChars = clampNumber(args.maxChars, 2_000, 50_000, 20_000);
+      const result = await mammoth.extractRawText({ path: attachment.path });
+      const compact = compactOfficeText(result.value, maxChars);
+      const warnings = result.messages?.map((message) => message.message).filter(Boolean) || [];
+      return {
+        ok: true,
+        summary: [
+          `DOCX extracted: ${attachment.originalName}`,
+          warnings.length ? `Warnings: ${warnings.slice(0, 5).join("; ")}` : "",
+          `Characters returned: ${compact.length}`,
+          "",
+          compact || "(No readable text found.)"
+        ].filter(Boolean).join("\n"),
+        metadata: { attachmentId: attachment.id, originalName: attachment.originalName, warnings }
+      };
+    }
+  );
+
+  registerTool(
+    {
+      type: "function",
+      function: {
+        name: "create_spreadsheet",
+        description: "Create an XLSX workbook artifact from structured sheet data. Use this for cleaned data, analysis tables, trackers, and office-ready spreadsheet deliverables.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: { type: "string", description: "Output .xlsx path. Bare file names are written to the generated files directory." },
+            sheets: {
+              type: "array",
+              description: "Workbook sheets. Each sheet has name, optional columns, and rows. Rows can be arrays or objects.",
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  columns: { type: "array", items: { type: "string" } },
+                  rows: { type: "array", items: {} }
+                }
+              }
+            }
+          },
+          required: ["path", "sheets"]
+        }
+      }
+    },
+    {
+      riskLevel: "write",
+      permissions: ["workspace:write"],
+      producesArtifacts: true,
+      timeoutMs: 20_000,
+      categories: ["spreadsheet", "office"],
+      skillIds: ["excel"]
+    },
+    async (args, context) => {
+      const outputPath = ensureXlsxPath(resolveGeneratedFilePath(String(args.path || "spreadsheet.xlsx"), context));
+      const sheets = normalizeWorkbookSheets(args.sheets);
+      await fs.mkdir(path.dirname(outputPath), { recursive: true });
+      await writeXlsxWorkbook(outputPath, sheets);
+      const relativePath = path.relative(context.workspacePath, outputPath);
+      return {
+        ok: true,
+        summary: [
+          `Generated file: ${relativePath}`,
+          `Workbook sheets: ${sheets.map((sheet) => `${sheet.name} (${sheet.rows.length} rows)`).join(", ")}`
+        ].join("\n"),
+        artifacts: [{ title: path.basename(outputPath), path: relativePath, kind: "table" }],
+        metadata: { path: relativePath, sheets: sheets.map((sheet) => ({ name: sheet.name, rows: sheet.rows.length })) }
+      };
+    }
+  );
+
+  registerTool(
+    {
+      type: "function",
+      function: {
+        name: "inspect_presentation",
+        description: "Inspect an uploaded PPTX presentation and return slide titles/text for review, rewriting, or deck generation.",
+        parameters: {
+          type: "object",
+          properties: {
+            attachmentId: { type: "string", description: "PPTX attachment id from list_attachments" },
+            maxSlides: { type: "number", description: "Maximum slides to return, 1-80. Defaults to 30." },
+            maxCharsPerSlide: { type: "number", description: "Maximum text characters per slide, 300-4000. Defaults to 1500." }
+          },
+          required: ["attachmentId"]
+        }
+      }
+    },
+    {
+      riskLevel: "read",
+      permissions: ["attachments:read"],
+      timeoutMs: 20_000,
+      categories: ["presentation", "office"],
+      skillIds: ["slides"]
+    },
+    async (args, context) => {
+      const attachment = requireAttachment(context, String(args.attachmentId || ""));
+      if (!isPptxAttachment(attachment)) throw new Error("Attachment is not a PPTX file");
+      const maxSlides = clampNumber(args.maxSlides, 1, 80, 30);
+      const maxCharsPerSlide = clampNumber(args.maxCharsPerSlide, 300, 4_000, 1_500);
+      const summary = await inspectPresentationAttachment(attachment.path, attachment.originalName, maxSlides, maxCharsPerSlide);
+      return {
+        ok: true,
+        summary,
+        metadata: { attachmentId: attachment.id, originalName: attachment.originalName }
+      };
+    }
+  );
+
+  registerTool(
+    {
+      type: "function",
+      function: {
         name: "transform_image",
         description: "Create a modified copy of an uploaded image. Supports resize, crop, rotate, grayscale, blur, sharpen, flip, flop, and format conversion.",
         parameters: {
@@ -1715,7 +1924,7 @@ function registerTools() {
       const searchMode = parseSearchMode(args.searchMode);
       const fetchTop = Math.max(0, Math.min(Number(args.fetchTop ?? 3) || 0, 4));
       const requestedLimit = Math.min(50, Math.max(num * 3, num * Math.max(1, engines.length)));
-      const payload = await openWebSearch(query, requestedLimit, { engines, searchMode });
+      const payload = await openWebSearch(workspaceRoot, query, requestedLimit, { engines, searchMode });
       if (!payload.results.length) {
         const failures = payload.partialFailures?.length ? `\nPartial failures: ${JSON.stringify(payload.partialFailures).slice(0, 1000)}` : "";
         return `No results found.${failures}`;
@@ -2766,6 +2975,454 @@ function formatAttachmentLine(attachment: Attachment) {
     .join(" | ");
 }
 
+function requireAttachment(context: ToolContext, attachmentId: string) {
+  const attachment = findContextAttachment(context, attachmentId);
+  if (!attachment) throw new Error("Attachment not found in this conversation");
+  return attachment;
+}
+
+function isPdfAttachment(attachment: ToolContext["attachments"][number]) {
+  return attachment.mimeType === "application/pdf" || /\.pdf$/i.test(attachment.originalName);
+}
+
+function isDocxAttachment(attachment: ToolContext["attachments"][number]) {
+  return (
+    attachment.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    /\.docx$/i.test(attachment.originalName)
+  );
+}
+
+function isPptxAttachment(attachment: ToolContext["attachments"][number]) {
+  return (
+    attachment.mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+    /\.pptx$/i.test(attachment.originalName)
+  );
+}
+
+function isSpreadsheetAttachment(attachment: ToolContext["attachments"][number]) {
+  return (
+    attachment.mimeType === "text/csv" ||
+    attachment.mimeType === "application/vnd.ms-excel" ||
+    attachment.mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    /\.(csv|xls|xlsx)$/i.test(attachment.originalName)
+  );
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(numeric)));
+}
+
+function compactOfficeText(text: string, maxChars: number) {
+  const normalized = text
+    .replace(/\r/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trim();
+  if (normalized.length <= maxChars) return normalized;
+  const headLength = Math.floor(maxChars * 0.75);
+  const tailLength = maxChars - headLength;
+  return [
+    normalized.slice(0, headLength).trimEnd(),
+    `[content truncated: omitted ${normalized.length - maxChars} chars]`,
+    normalized.slice(-tailLength).trimStart()
+  ].join("\n\n");
+}
+
+async function extractPdfAttachmentText(filePath: string, pages?: number[]) {
+  const data = await fs.readFile(filePath);
+  const parser = new PDFParse({ data });
+  try {
+    const result = pages?.length ? await parser.getText({ partial: pages }) : await parser.getText();
+    return result.text || "";
+  } finally {
+    await parser.destroy();
+  }
+}
+
+async function readSpreadsheetAttachment(
+  attachment: ToolContext["attachments"][number],
+  requestedSheet: string,
+  maxRows: number,
+  maxColumns: number
+) {
+  if (/\.csv$/i.test(attachment.originalName) || attachment.mimeType === "text/csv") {
+    const csv = await fs.readFile(attachment.path, "utf-8");
+    const rows = parseCsvRows(csv).slice(0, maxRows).map((row) => row.slice(0, maxColumns));
+    return [
+      `Spreadsheet read: ${attachment.originalName}`,
+      "Format: CSV",
+      `Rows returned: ${rows.length}`,
+      "",
+      formatTablePreview(rows)
+    ].join("\n");
+  }
+
+  if (!/\.xlsx$/i.test(attachment.originalName)) {
+    throw new Error("Only CSV and XLSX spreadsheet parsing is currently supported");
+  }
+
+  const zip = await JSZip.loadAsync(await fs.readFile(attachment.path));
+  const sharedStrings = await readXlsxSharedStrings(zip);
+  const workbookSheets = await readXlsxWorkbookSheets(zip);
+  const selectedSheets = requestedSheet
+    ? workbookSheets.filter((sheet) => sheet.name.toLowerCase() === requestedSheet.toLowerCase())
+    : workbookSheets;
+  const sheets = selectedSheets.length ? selectedSheets : workbookSheets.slice(0, 5);
+  const previews: string[] = [];
+
+  for (const sheet of sheets.slice(0, 5)) {
+    const file = zip.file(sheet.path);
+    if (!file) continue;
+    const xml = await file.async("string");
+    const parsed = officeXmlParser.parse(xml);
+    const rows = extractSheetRows(parsed, sharedStrings, maxRows, maxColumns);
+    previews.push([
+      `Sheet: ${sheet.name}`,
+      `Path: ${sheet.path}`,
+      `Rows returned: ${rows.length}`,
+      "",
+      formatTablePreview(rows)
+    ].join("\n"));
+  }
+
+  return [
+    `Spreadsheet read: ${attachment.originalName}`,
+    `Workbook sheets: ${workbookSheets.map((sheet) => sheet.name).join(", ") || "unknown"}`,
+    requestedSheet && !selectedSheets.length ? `Requested sheet not found: ${requestedSheet}` : "",
+    "",
+    previews.join("\n\n---\n\n") || "(No readable worksheet rows found.)"
+  ].filter(Boolean).join("\n");
+}
+
+type WorkbookSheet = {
+  name: string;
+  columns: string[];
+  rows: Array<Array<string | number | boolean>>;
+};
+
+function ensureXlsxPath(filePath: string) {
+  return /\.xlsx$/i.test(filePath) ? filePath : `${filePath.replace(/\.[^.\\/]+$/, "")}.xlsx`;
+}
+
+function normalizeWorkbookSheets(value: unknown): WorkbookSheet[] {
+  const inputSheets = Array.isArray(value) ? value : [];
+  const sheets = inputSheets.map((input, index) => normalizeWorkbookSheet(input, index)).filter((sheet) => sheet.rows.length || sheet.columns.length);
+  if (!sheets.length) throw new Error("At least one sheet with columns or rows is required");
+  return sheets.slice(0, 12);
+}
+
+function normalizeWorkbookSheet(value: unknown, index: number): WorkbookSheet {
+  const input = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const rowsInput = Array.isArray(input.rows) ? input.rows : [];
+  const explicitColumns = Array.isArray(input.columns) ? input.columns.map((column) => String(column)) : [];
+  const objectColumns = rowsInput.flatMap((row) => row && typeof row === "object" && !Array.isArray(row) ? Object.keys(row) : []);
+  const columns = uniqueStrings([...explicitColumns, ...objectColumns]).slice(0, 100);
+  const rows = rowsInput.slice(0, 10_000).map((row) => normalizeWorkbookRow(row, columns)).filter((row) => row.some((cell) => String(cell).trim() !== ""));
+  const name = sanitizeSheetName(String(input.name || `Sheet ${index + 1}`), index);
+  return { name, columns, rows };
+}
+
+function normalizeWorkbookRow(value: unknown, columns: string[]): Array<string | number | boolean> {
+  if (Array.isArray(value)) return value.slice(0, 100).map(normalizeCellScalar);
+  if (value && typeof value === "object") {
+    const input = value as Record<string, unknown>;
+    const keys = columns.length ? columns : Object.keys(input);
+    return keys.slice(0, 100).map((key) => normalizeCellScalar(input[key]));
+  }
+  return [normalizeCellScalar(value)];
+}
+
+function normalizeCellScalar(value: unknown): string | number | boolean {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "boolean") return value;
+  if (value === undefined || value === null) return "";
+  return String(value);
+}
+
+function sanitizeSheetName(value: string, index: number) {
+  const cleaned = value.replace(/[\[\]:*?/\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 31);
+  return cleaned || `Sheet ${index + 1}`;
+}
+
+async function writeXlsxWorkbook(filePath: string, sheets: WorkbookSheet[]) {
+  const zip = new JSZip();
+  zip.file("[Content_Types].xml", xlsxContentTypes(sheets.length));
+  zip.folder("_rels")?.file(".rels", xlsxRootRels());
+  const xl = zip.folder("xl");
+  xl?.file("workbook.xml", xlsxWorkbookXml(sheets));
+  xl?.file("styles.xml", xlsxStylesXml());
+  xl?.folder("_rels")?.file("workbook.xml.rels", xlsxWorkbookRels(sheets.length));
+  const worksheets = xl?.folder("worksheets");
+  sheets.forEach((sheet, index) => worksheets?.file(`sheet${index + 1}.xml`, xlsxWorksheetXml(sheet)));
+  const content = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+  await fs.writeFile(filePath, content);
+}
+
+function xlsxContentTypes(sheetCount: number) {
+  const sheetOverrides = Array.from({ length: sheetCount }, (_, index) =>
+    `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
+  ).join("");
+  return xmlDocument([
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
+    '<Default Extension="xml" ContentType="application/xml"/>',
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>',
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>',
+    sheetOverrides,
+    "</Types>"
+  ].join(""));
+}
+
+function xlsxRootRels() {
+  return xmlDocument([
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>',
+    "</Relationships>"
+  ].join(""));
+}
+
+function xlsxWorkbookXml(sheets: WorkbookSheet[]) {
+  const sheetNodes = sheets.map((sheet, index) =>
+    `<sheet name="${xmlAttr(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`
+  ).join("");
+  return xmlDocument([
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">',
+    `<sheets>${sheetNodes}</sheets>`,
+    "</workbook>"
+  ].join(""));
+}
+
+function xlsxWorkbookRels(sheetCount: number) {
+  const sheetRels = Array.from({ length: sheetCount }, (_, index) =>
+    `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`
+  ).join("");
+  return xmlDocument([
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+    sheetRels,
+    `<Relationship Id="rId${sheetCount + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`,
+    "</Relationships>"
+  ].join(""));
+}
+
+function xlsxStylesXml() {
+  return xmlDocument([
+    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',
+    '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>',
+    '<fills count="1"><fill><patternFill patternType="none"/></fill></fills>',
+    '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>',
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>',
+    '<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>',
+    "</styleSheet>"
+  ].join(""));
+}
+
+function xlsxWorksheetXml(sheet: WorkbookSheet) {
+  const rows = sheet.columns.length ? [sheet.columns, ...sheet.rows] : sheet.rows;
+  const rowNodes = rows.map((row, rowIndex) => {
+    const cellNodes = row.map((cell, columnIndex) => xlsxCellXml(cell, rowIndex + 1, columnIndex + 1)).join("");
+    return `<row r="${rowIndex + 1}">${cellNodes}</row>`;
+  }).join("");
+  return xmlDocument([
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',
+    `<sheetData>${rowNodes}</sheetData>`,
+    "</worksheet>"
+  ].join(""));
+}
+
+function xlsxCellXml(value: string | number | boolean, row: number, column: number) {
+  const ref = `${columnName(column)}${row}`;
+  if (typeof value === "number") return `<c r="${ref}"><v>${value}</v></c>`;
+  if (typeof value === "boolean") return `<c r="${ref}" t="b"><v>${value ? 1 : 0}</v></c>`;
+  return `<c r="${ref}" t="inlineStr"><is><t>${xmlText(value)}</t></is></c>`;
+}
+
+function columnName(index: number) {
+  let value = index;
+  let name = "";
+  while (value > 0) {
+    const mod = (value - 1) % 26;
+    name = String.fromCharCode(65 + mod) + name;
+    value = Math.floor((value - mod) / 26);
+  }
+  return name;
+}
+
+function xmlDocument(body: string) {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>${body}`;
+}
+
+function xmlText(value: string) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function xmlAttr(value: string) {
+  return xmlText(value).replace(/"/g, "&quot;");
+}
+
+function parseCsvRows(text: string) {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (quoted) {
+      if (char === "\"" && next === "\"") {
+        cell += "\"";
+        index++;
+      } else if (char === "\"") {
+        quoted = false;
+      } else {
+        cell += char;
+      }
+      continue;
+    }
+    if (char === "\"") {
+      quoted = true;
+      continue;
+    }
+    if (char === ",") {
+      row.push(cell);
+      cell = "";
+      continue;
+    }
+    if (char === "\n") {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      continue;
+    }
+    if (char !== "\r") cell += char;
+  }
+
+  row.push(cell);
+  if (row.some((value) => value.trim())) rows.push(row);
+  return rows;
+}
+
+async function readXlsxSharedStrings(zip: JSZip) {
+  const file = zip.file("xl/sharedStrings.xml");
+  if (!file) return [];
+  const parsed = officeXmlParser.parse(await file.async("string"));
+  const items = asArray(parsed?.sst?.si);
+  return items.map((item) => collectTextNodes(item).join(""));
+}
+
+async function readXlsxWorkbookSheets(zip: JSZip) {
+  const workbookFile = zip.file("xl/workbook.xml");
+  if (!workbookFile) {
+    return zip.file(/^xl\/worksheets\/sheet\d+\.xml$/).map((file, index) => ({
+      name: `Sheet ${index + 1}`,
+      path: file.name
+    }));
+  }
+
+  const relsFile = zip.file("xl/_rels/workbook.xml.rels");
+  const rels = new Map<string, string>();
+  if (relsFile) {
+    const parsedRels = officeXmlParser.parse(await relsFile.async("string"));
+    for (const rel of asArray(parsedRels?.Relationships?.Relationship)) {
+      if (rel?.Id && rel?.Target) {
+        rels.set(String(rel.Id), `xl/${String(rel.Target).replace(/^\/?xl\//, "")}`);
+      }
+    }
+  }
+
+  const parsedWorkbook = officeXmlParser.parse(await workbookFile.async("string"));
+  const sheets = asArray(parsedWorkbook?.workbook?.sheets?.sheet);
+  return sheets.map((sheet, index) => ({
+    name: String(sheet?.name || `Sheet ${index + 1}`),
+    path: rels.get(String(sheet?.id || sheet?.["r:id"])) || `xl/worksheets/sheet${index + 1}.xml`
+  }));
+}
+
+function extractSheetRows(parsed: unknown, sharedStrings: string[], maxRows: number, maxColumns: number) {
+  const worksheet = parsed as { worksheet?: { sheetData?: { row?: unknown } } };
+  const rows = asArray(worksheet?.worksheet?.sheetData?.row);
+  return rows.slice(0, maxRows).map((row) => {
+    const cells = asArray((row as { c?: unknown })?.c);
+    return cells.slice(0, maxColumns).map((cell) => cellValue(cell, sharedStrings));
+  });
+}
+
+function cellValue(cell: unknown, sharedStrings: string[]) {
+  const input = cell as { t?: string; v?: unknown; is?: unknown };
+  const rawValue = valueText(input?.v);
+  if (input?.t === "s") return sharedStrings[Number(rawValue)] || "";
+  if (input?.t === "inlineStr") return collectTextNodes(input.is).join("");
+  return rawValue;
+}
+
+function valueText(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "object" && "#text" in value) return String((value as Record<string, unknown>)["#text"] || "");
+  return String(value);
+}
+
+function formatTablePreview(rows: string[][]) {
+  if (!rows.length) return "(No rows found.)";
+  return rows
+    .map((row, index) => {
+      const cells = row.map((cell) => normalizeWhitespace(cell).slice(0, 120));
+      return `${index + 1}: ${cells.join(" | ")}`;
+    })
+    .join("\n");
+}
+
+async function inspectPresentationAttachment(filePath: string, originalName: string, maxSlides: number, maxCharsPerSlide: number) {
+  const zip = await JSZip.loadAsync(await fs.readFile(filePath));
+  const slideFiles = zip
+    .file(/^ppt\/slides\/slide\d+\.xml$/)
+    .sort((left, right) => numericSuffix(left.name) - numericSuffix(right.name))
+    .slice(0, maxSlides);
+  const slides: string[] = [];
+
+  for (const file of slideFiles) {
+    const parsed = officeXmlParser.parse(await file.async("string"));
+    const texts = collectTextNodes(parsed).map(normalizeWhitespace).filter(Boolean);
+    const body = compactOfficeText(texts.join("\n"), maxCharsPerSlide);
+    slides.push([
+      `Slide ${numericSuffix(file.name) || slides.length + 1}`,
+      body || "(No readable text found.)"
+    ].join("\n"));
+  }
+
+  return [
+    `PPTX inspected: ${originalName}`,
+    `Slides returned: ${slides.length}`,
+    "",
+    slides.join("\n\n---\n\n") || "(No readable slides found.)"
+  ].join("\n");
+}
+
+function collectTextNodes(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return [];
+  if (Array.isArray(value)) return value.flatMap(collectTextNodes);
+  if (typeof value !== "object") return [];
+  const input = value as Record<string, unknown>;
+  const current = typeof input.t === "string" || typeof input.t === "number" ? [String(input.t)] : [];
+  const textNode = typeof input["#text"] === "string" || typeof input["#text"] === "number" ? [String(input["#text"])] : [];
+  const nested = Object.entries(input)
+    .filter(([key]) => key !== "t" && key !== "#text")
+    .flatMap(([, child]) => collectTextNodes(child));
+  return [...current, ...textNode, ...nested];
+}
+
+function asArray<T>(value: T | T[] | undefined | null): T[] {
+  if (value === undefined || value === null) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function numericSuffix(value: string) {
+  return Number(value.match(/(\d+)(?=\.xml$)/)?.[1] || 0);
+}
+
 function findContextAttachment(context: ToolContext, attachmentId: string) {
   return context.attachments.find((attachment) => attachment.id === attachmentId);
 }
@@ -3011,21 +3668,6 @@ async function callWebBridge(action: string, args: unknown, session: string) {
   return payload;
 }
 
-function formatFetchedPage(url: string, html: string) {
-  const title = extractTagContent(html, "title");
-  const description = extractMetaDescription(html);
-  const text = htmlToReadableText(html);
-  return [
-    `Fetched page: ${url}`,
-    title ? `Title: ${title}` : "",
-    description ? `Description: ${description}` : "",
-    "Readable text:",
-    text || "(No readable text extracted.)"
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
 function summarizeWebBridgePayload(action: string, payload: unknown) {
   const cleaned = cleanWebPayload(payload);
   if (typeof cleaned === "string") {
@@ -3073,250 +3715,6 @@ function cleanWebPayload(value: unknown, depth = 0): unknown {
     return output;
   }
   return value;
-}
-
-function htmlToReadableText(html: string) {
-  const withoutScripts = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
-    .replace(/<!--[\s\S]*?-->/g, " ");
-  const withBreaks = withoutScripts
-    .replace(/<\/(p|div|section|article|header|footer|main|aside|li|tr|h[1-6])>/gi, "\n")
-    .replace(/<br\s*\/?>/gi, "\n");
-  const text = decodeHtmlEntities(withBreaks.replace(/<[^>]+>/g, " "));
-  return normalizeWhitespace(text).slice(0, 8000);
-}
-
-function extractTagContent(html: string, tagName: string) {
-  const match = html.match(new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\\/${tagName}>`, "i"));
-  return match ? normalizeWhitespace(decodeHtmlEntities(match[1].replace(/<[^>]+>/g, " "))).slice(0, 300) : "";
-}
-
-function extractMetaDescription(html: string) {
-  const match =
-    html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["'][^>]*>/i) ||
-    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["'][^>]*>/i);
-  return match ? normalizeWhitespace(decodeHtmlEntities(match[1])).slice(0, 500) : "";
-}
-
-function looksLikeHtml(text: string) {
-  return /<!doctype html|<html[\s>]|<head[\s>]|<body[\s>]|<script[\s>]|<div[\s>]|<meta[\s>]/i.test(text);
-}
-
-function compactJsonText(text: string, limit: number) {
-  try {
-    return JSON.stringify(cleanWebPayload(JSON.parse(text)), null, 2).slice(0, limit);
-  } catch {
-    return normalizeWhitespace(text).slice(0, limit);
-  }
-}
-
-function decodeHtmlEntities(text: string) {
-  const entities: Record<string, string> = {
-    amp: "&",
-    lt: "<",
-    gt: ">",
-    quot: "\"",
-    apos: "'",
-    nbsp: " "
-  };
-  return text.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (full, entity: string) => {
-    if (entity[0] === "#") {
-      const codePoint = entity[1]?.toLowerCase() === "x" ? Number.parseInt(entity.slice(2), 16) : Number.parseInt(entity.slice(1), 10);
-      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : full;
-    }
-    return entities[entity.toLowerCase()] ?? full;
-  });
-}
-
-const supportedSearchEngines = new Set(["bing", "duckduckgo", "exa", "brave", "baidu", "csdn", "linuxdo", "juejin", "startpage", "sogou"]);
-const defaultSearchEngines = ["bing", "duckduckgo", "brave"];
-
-async function openWebSearch(query: string, limit: number, options: WebSearchOptions = {}): Promise<WebSearchPayload> {
-  const binPath = path.join(workspaceRoot, "node_modules", ".bin", "open-websearch");
-  const args = ["search", query, "--limit", String(Math.max(1, Math.min(limit, 50))), "--json"];
-  if (options.engines?.length) args.push("--engines", options.engines.join(","));
-  if (options.searchMode && options.searchMode !== "auto") args.push("--search-mode", options.searchMode);
-  const { stdout, stderr } = await execFileAsync(
-    binPath,
-    args,
-    {
-      cwd: workspaceRoot,
-      timeout: 45_000,
-      maxBuffer: 1024 * 1024 * 4,
-      env: {
-        ...process.env,
-        OPEN_WEBSEARCH_DAEMON_ACTION_TIMEOUT_MS: "20000"
-      }
-    }
-  );
-  const envelope = parseOpenWebSearchJson(stdout || stderr);
-  if (envelope.status !== "ok") {
-    throw new Error(envelope.error?.message ?? "open-websearch failed");
-  }
-  return envelope.data as WebSearchPayload;
-}
-
-function parseSearchEngines(value: unknown) {
-  const raw = Array.isArray(value)
-    ? value
-    : typeof value === "string"
-      ? value.split(",")
-      : process.env.SEARCH_WEB_ENGINES?.split(",");
-  const engines = (raw || defaultSearchEngines)
-    .map((engine) => String(engine).trim().toLowerCase())
-    .filter((engine, index, array) => supportedSearchEngines.has(engine) && array.indexOf(engine) === index);
-  return engines.length ? engines : defaultSearchEngines;
-}
-
-function parseSearchMode(value: unknown): WebSearchOptions["searchMode"] {
-  if (value === "request" || value === "auto" || value === "playwright") return value;
-  const envValue = process.env.SEARCH_WEB_MODE;
-  return envValue === "request" || envValue === "auto" || envValue === "playwright" ? envValue : undefined;
-}
-
-function rankWebSearchResults(query: string, results: WebSearchResult[]): RankedWebSearchResult[] {
-  const terms = tokenizeSearchQuery(query);
-  const seen = new Set<string>();
-  return results
-    .map((result) => enrichSearchResult(result, terms))
-    .filter((result) => {
-      const key = canonicalResultKey(result.url);
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort((a, b) => b.rankScore - a.rankScore);
-}
-
-function enrichSearchResult(result: WebSearchResult, terms: string[]): RankedWebSearchResult {
-  const domain = domainFromUrl(result.url);
-  const text = `${result.title} ${result.description || ""} ${domain}`.toLowerCase();
-  const matchedTerms = terms.filter((term) => text.includes(term));
-  const qualitySignals: string[] = [];
-  let score = 10 + matchedTerms.length * 8;
-
-  if (result.title && terms.some((term) => result.title.toLowerCase().includes(term))) score += 8;
-  if (result.description && terms.some((term) => result.description!.toLowerCase().includes(term))) score += 4;
-  if (/\.(gov|edu)(\.[a-z]{2})?$/i.test(domain)) {
-    score += 18;
-    qualitySignals.push("government-or-education-domain");
-  }
-  if (/(^|\.)((docs|developer|developers|support|help|learn)\.)/.test(domain) || /\/(docs|documentation|developer|developers|blog|news|press|releases)\b/i.test(result.url)) {
-    score += 12;
-    qualitySignals.push("documentation-or-official-section");
-  }
-  if (/\b(official|官网|官方|docs|documentation|release|announcement|公告|发布)\b/i.test(`${result.title} ${result.description || ""}`)) {
-    score += 8;
-    qualitySignals.push("official-or-announcement-language");
-  }
-  if (/\b(20[2-9][0-9]|today|yesterday|latest|最新|今天|昨日|昨天)\b/i.test(`${result.title} ${result.description || ""}`)) {
-    score += 4;
-    qualitySignals.push("freshness-language");
-  }
-  if (/(baike\.baidu\.com|wikipedia\.org|zhihu\.com|csdn\.net|blog\.csdn\.net|jianshu\.com|medium\.com|apifox\.com|openai\.ac\.cn)/i.test(domain)) {
-    score -= 8;
-    qualitySignals.push("secondary-or-seo-prone-domain");
-  }
-  if (/(utm_|spm=|ref=|source=)/i.test(result.url)) score -= 2;
-  if (result.engine) qualitySignals.push(`engine:${result.engine}`);
-
-  return {
-    ...result,
-    domain,
-    matchedTerms,
-    qualitySignals,
-    rankScore: Math.max(0, Math.round(score))
-  };
-}
-
-function tokenizeSearchQuery(query: string) {
-  const normalized = query
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s.-]+/gu, " ")
-    .split(/\s+/)
-    .map((term) => term.trim())
-    .filter(Boolean);
-  return [...new Set(normalized.filter((term) => term.length > 1 && !/^(the|and|for|with|what|when|怎么|如何|什么|一个)$/.test(term)))].slice(0, 12);
-}
-
-function canonicalResultKey(url: string) {
-  try {
-    const parsed = new URL(url);
-    parsed.hash = "";
-    for (const key of [...parsed.searchParams.keys()]) {
-      if (/^(utm_|spm|ref|source|fbclid|gclid)/i.test(key)) parsed.searchParams.delete(key);
-    }
-    const pathName = parsed.pathname.replace(/\/+$/, "") || "/";
-    return `${parsed.hostname.replace(/^www\./, "").toLowerCase()}${pathName}${parsed.search}`;
-  } catch {
-    return "";
-  }
-}
-
-function domainFromUrl(url: string) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "").toLowerCase();
-  } catch {
-    return "";
-  }
-}
-
-async function attachFetchedExcerpts(results: RankedWebSearchResult[], fetchTop: number) {
-  const targets = results.slice(0, fetchTop);
-  await Promise.all(
-    targets.map(async (result) => {
-      try {
-        result.fetched = await fetchReadablePageExcerpt(result.url);
-        result.rankScore += 6;
-        result.qualitySignals.push("content-fetched");
-      } catch (error) {
-        result.fetchError = error instanceof Error ? error.message : String(error);
-      }
-    })
-  );
-}
-
-async function fetchReadablePageExcerpt(url: string) {
-  if (!/^https?:\/\//i.test(url)) throw new Error("unsupported URL scheme");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "user-agent": "SuperCodex search verifier (+local research tool)"
-      }
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const contentType = response.headers.get("content-type") || "";
-    const text = await response.text();
-    if (contentType.includes("application/json")) {
-      return { excerpt: compactJsonText(text, 1800) };
-    }
-    if (!contentType.includes("text/html") && !looksLikeHtml(text)) {
-      return { excerpt: normalizeWhitespace(stripAnsi(text)).slice(0, 1800) };
-    }
-    const title = extractTagContent(text, "title");
-    const description = extractMetaDescription(text);
-    const excerpt = htmlToReadableText(text).slice(0, 2200);
-    if (!excerpt) throw new Error("no readable text extracted");
-    return { title, description, excerpt };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function parseOpenWebSearchJson(output: string) {
-  const start = output.lastIndexOf("\n{");
-  const jsonText = (start >= 0 ? output.slice(start + 1) : output.slice(output.indexOf("{"))).trim();
-  if (!jsonText) throw new Error("open-websearch returned no JSON");
-  return JSON.parse(jsonText) as {
-    status: "ok" | "error";
-    data: unknown;
-    error?: { message?: string };
-  };
 }
 
 function fallbackOfficeReply(messages: ChatMessage[]) {

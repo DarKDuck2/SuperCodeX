@@ -165,9 +165,74 @@ describe("tool orchestration", () => {
 
     assert.deepEqual(excelTask, ["read_file", "run_command", "discover_or_load_skill"]);
   });
+
+  it("selects specialized office parsing tools by task intent", () => {
+    const tools = [
+      testTool("read_file", "read"),
+      testTool("extract_pdf_text", "read", ["pdf", "documents", "office"]),
+      testTool("read_spreadsheet", "read", ["spreadsheet", "office"]),
+      testTool("create_spreadsheet", "write", ["spreadsheet", "office"]),
+      testTool("extract_docx_text", "read", ["documents", "office"]),
+      testTool("inspect_presentation", "read", ["presentation", "office"]),
+      testTool("webbridge_command", "external", ["browser"])
+    ];
+
+    const pdfTask = selectToolsForTask(tools, {
+      prompt: "总结这个 PDF 的核心观点",
+      context: { workspacePath: process.cwd(), outputPath: process.cwd(), attachments: [] }
+    }).map((tool) => tool.definition.function.name);
+
+    const excelTask = selectToolsForTask(tools, {
+      prompt: "分析这个 xlsx 表格数据",
+      context: { workspacePath: process.cwd(), outputPath: process.cwd(), attachments: [] }
+    }).map((tool) => tool.definition.function.name);
+
+    const pptTask = selectToolsForTask(tools, {
+      prompt: "检查这份 PPT 的结构",
+      context: { workspacePath: process.cwd(), outputPath: process.cwd(), attachments: [] }
+    }).map((tool) => tool.definition.function.name);
+
+    assert.deepEqual(pdfTask, ["read_file", "extract_pdf_text"]);
+    assert.deepEqual(excelTask, ["read_file", "read_spreadsheet", "create_spreadsheet"]);
+    assert.deepEqual(pptTask, ["read_file", "inspect_presentation"]);
+  });
+
+  it("uses attachment file type to avoid noisy office tool expansion", () => {
+    const tools = [
+      testTool("read_file", "read"),
+      testTool("read_attachment", "read"),
+      testTool("extract_pdf_text", "read", ["pdf", "documents", "office"]),
+      testTool("read_spreadsheet", "read", ["spreadsheet", "office"]),
+      testTool("extract_docx_text", "read", ["documents", "office"]),
+      testTool("inspect_presentation", "read", ["presentation", "office"])
+    ];
+
+    const names = selectToolsForTask(tools, {
+      prompt: "总结这个文件",
+      context: {
+        workspacePath: process.cwd(),
+        outputPath: process.cwd(),
+        attachments: [
+          {
+            id: "attachment_pdf",
+            conversationId: "conversation_1",
+            originalName: "report.pdf",
+            fileName: "report.pdf",
+            mimeType: "application/pdf",
+            size: 1024,
+            path: "/tmp/report.pdf",
+            kind: "file",
+            createdAt: new Date().toISOString()
+          }
+        ]
+      }
+    }).map((tool) => tool.definition.function.name);
+
+    assert.deepEqual(names, ["read_file", "read_attachment", "extract_pdf_text"]);
+  });
 });
 
-function testTool(name: string, riskLevel: ToolRiskLevel): RegisteredTool {
+function testTool(name: string, riskLevel: ToolRiskLevel, categories: string[] = []): RegisteredTool {
   return {
     definition: {
       type: "function",
@@ -177,7 +242,7 @@ function testTool(name: string, riskLevel: ToolRiskLevel): RegisteredTool {
         parameters: { type: "object", properties: {} }
       }
     },
-    metadata: { riskLevel, permissions: [] },
+    metadata: { riskLevel, permissions: [], categories },
     handler: async () => "ok"
   };
 }
