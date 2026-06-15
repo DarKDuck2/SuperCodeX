@@ -22,6 +22,7 @@ const pdfTaskPattern = /pdf|论文|文献|paper|article/i;
 const spreadsheetTaskPattern = /excel|表格|数据|csv|xlsx|xls|sheet|spreadsheet|公式/i;
 const documentTaskPattern = /docx|word|文档|报告|润色|写作|document/i;
 const presentationTaskPattern = /ppt|pptx|幻灯片|演示|deck|slides|presentation/i;
+const claudeCodeTaskPattern = /代码|bug|修复|实现|改动|重构|开发|仓库|repo|code|coding|refactor|bug|fix|implement/i;
 
 export function selectToolsForTask(
   tools: RegisteredTool[],
@@ -53,6 +54,7 @@ export function selectToolsForTask(
   const includeWeb = webTaskPattern.test(selectorText) || activeCategories.has("search") || activeCategories.has("research");
   const includeImages = hasImages || imageTaskPattern.test(selectorText);
   const includeBrowser = browserTaskPattern.test(selectorText) || activeCategories.has("browser");
+  const includeClaudeCode = claudeCodeTaskPattern.test(selectorText) || activeCategories.has("code");
 
   return tools.filter((tool) => {
     const name = tool.definition.function.name;
@@ -61,6 +63,7 @@ export function selectToolsForTask(
     if (metadata.categories?.some((category) => activeCategories.has(category.toLowerCase()))) return true;
     if (alwaysAvailable.has(name)) return true;
     if (name === "run_command") return includeShell;
+    if (name === "delegate_to_claude_code") return includeClaudeCode;
     if (name === "fetch_url" || name === "search_web") return includeWeb;
     if (name === "transform_image") return includeImages;
     if (name === "webbridge_status" || name === "webbridge_command") return includeBrowser;

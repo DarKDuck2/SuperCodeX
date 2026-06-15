@@ -44,6 +44,9 @@ const recentContextMessageLimit = Number(process.env.RECENT_CONTEXT_MESSAGES ?? 
 const maxContextToolChars = Number(process.env.MAX_CONTEXT_TOOL_CHARS ?? 600_000);
 const maxContextMessageChars = Number(process.env.MAX_CONTEXT_MESSAGE_CHARS ?? 20_000);
 const maxToolResultChars = Number(process.env.MAX_TOOL_RESULT_CHARS ?? 12_000);
+const claudeCodeExecutable = process.env.CLAUDE_CODE_EXECUTABLE || "claude";
+const claudeCodeArgs = splitCommandArgs(process.env.CLAUDE_CODE_ARGS || "--print --dangerously-skip-permissions");
+const claudeCodeTimeoutMs = readPositiveIntegerEnv("CLAUDE_CODE_TIMEOUT_MS", 600_000);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024, files: 12 }
@@ -70,6 +73,8 @@ type ApiConfig = {
   apiKey?: string;
   model?: string;
 };
+
+type AgentRunMode = "agent" | "team";
 
 type Message = {
   id: string;
@@ -605,13 +610,15 @@ app.get("/api/attachments/:id/content", (req, res) => {
 
 app.post("/api/conversations/:id/messages", async (req, res) => {
   const conversation = conversations.get(req.params.id);
-  const { content, config, attachmentIds, stream } = req.body as {
+  const { content, config, attachmentIds, stream, mode } = req.body as {
     content?: string;
     config?: ApiConfig;
     attachmentIds?: string[];
     stream?: boolean;
+    mode?: AgentRunMode;
   };
   const prompt = content?.trim();
+  const runMode = normalizeAgentRunMode(mode);
 
   if (!conversation) {
     res.status(404).json({ error: "conversation not found" });
@@ -655,7 +662,7 @@ app.post("/api/conversations/:id/messages", async (req, res) => {
     });
     writeAgentEvent(res, { type: "step", turn: 0, message: "收到用户请求，开始规划工具使用。" });
     try {
-      await runAgentLoop(conversation, config, (event) => writeAgentEvent(res, event), streamAbortController.signal);
+      await runAgentLoop(conversation, config, (event) => writeAgentEvent(res, event), streamAbortController.signal, runMode);
       streamCompleted = true;
       if (!res.destroyed && !res.writableEnded) {
         res.write("data: [DONE]\n\n");
@@ -676,7 +683,7 @@ app.post("/api/conversations/:id/messages", async (req, res) => {
   }
 
   try {
-    const agentResult = await runAgentLoop(conversation, config);
+    const agentResult = await runAgentLoop(conversation, config, undefined, undefined, runMode);
     res.status(201).json({
       conversation,
       userMessage,
@@ -957,7 +964,8 @@ async function runAgentLoop(
   conversation: Conversation,
   config?: ApiConfig,
   onEvent?: (event: AgentEvent) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  mode: AgentRunMode = "agent"
 ): Promise<AgentResult> {
   const project = projects.get(conversation.projectId);
   const conversationAttachments = getConversationAttachments(conversation.id);
@@ -968,17 +976,17 @@ async function runAgentLoop(
   };
   await fs.mkdir(context.outputPath, { recursive: true });
   const outputRelativePath = path.relative(context.workspacePath, context.outputPath) || ".";
-  const chatMessages: ChatMessage[] = buildAgentContextMessages(conversation, context, outputRelativePath);
+  const chatMessages: ChatMessage[] = buildAgentContextMessages(conversation, context, outputRelativePath, mode);
   const toolCalls: AgentResult["toolCalls"] = [];
 
   for (let turns = 1; turns <= maxAgentTurns; turns++) {
     assertNotAborted(signal);
     onEvent?.({ type: "step", turn: turns, message: `第 ${turns} 步：模型正在判断是否需要调用工具。` });
-    const selectedToolDefinitions = selectToolsForTask(toolRegistry.list(), {
+    const selectedToolDefinitions = ensureModeToolDefinitions(selectToolsForTask(toolRegistry.list(), {
       prompt: latestUserPrompt(conversation),
       context,
       ...getActiveSkillSelection()
-    }).map((tool) => tool.definition);
+    }).map((tool) => tool.definition), mode);
     const response = await callLLM(chatMessages, config, true, signal, selectedToolDefinitions);
     const usageCall = recordLlmUsage(conversation, response, {
       config,
@@ -1335,6 +1343,99 @@ function registerTools() {
         output || "(Command succeeded, no output)",
         generatedOutput
       ].filter(Boolean).join("\n");
+    }
+  );
+
+  registerTool(
+    {
+      type: "function",
+      function: {
+        name: "delegate_to_claude_code",
+        description: "Delegate a coding or local project task to Claude Code. Use this as the preferred executor for implementation, refactoring, debugging, tests, and repository changes; SuperCodex should supervise the result and summarize it for the user.",
+        parameters: {
+          type: "object",
+          properties: {
+            task: {
+              type: "string",
+              description: "Precise task for Claude Code, including expected files, behavior, constraints, and verification requirements."
+            },
+            cwd: {
+              type: "string",
+              description: "Working directory for Claude Code. Defaults to the current project workspace."
+            },
+            mode: {
+              type: "string",
+              enum: ["implement", "inspect", "test"],
+              description: "Whether Claude Code should implement changes, inspect/report only, or focus on tests. Defaults to implement."
+            },
+            timeoutMs: {
+              type: "number",
+              description: "Optional timeout in milliseconds. Defaults to CLAUDE_CODE_TIMEOUT_MS or 600000."
+            }
+          },
+          required: ["task"]
+        }
+      }
+    },
+    {
+      riskLevel: "shell",
+      permissions: ["shell:run", "workspace:read", "workspace:write"],
+      producesArtifacts: true,
+      timeoutMs: claudeCodeTimeoutMs,
+      categories: ["code"],
+      keywords: ["claude", "claude code", "代码", "实现", "修复", "重构", "测试", "coding", "implementation"]
+    },
+    async (args, context) => {
+      const task = normalizeWhitespace(String(args.task || ""));
+      if (!task) throw new Error("task is required");
+
+      const cwd = await resolveCommandCwd(args.cwd || context.workspacePath, context);
+      const mode = String(args.mode || "implement");
+      const timeoutMs = Math.max(10_000, Math.min(Number(args.timeoutMs) || claudeCodeTimeoutMs, 3_600_000));
+      const prompt = buildClaudeCodePrompt(task, mode, context, cwd);
+      const command = {
+        executable: claudeCodeExecutable,
+        args: [...claudeCodeArgs, prompt],
+        display: formatCommandForDisplay([claudeCodeExecutable, ...claudeCodeArgs, "<task prompt>"]),
+        source: "argv" as const
+      };
+
+      const beforeGeneratedFiles = await snapshotGeneratedFiles(context.outputPath);
+      try {
+        const result = await executeStructuredCommand(command, {
+          cwd,
+          timeout: timeoutMs,
+          maxBuffer: 1024 * 1024 * 20
+        });
+        const generatedFiles = diffGeneratedFiles(beforeGeneratedFiles, await snapshotGeneratedFiles(context.outputPath), context);
+        return {
+          ok: true,
+          summary: "Claude Code completed the delegated task.",
+          stdout: result.stdout,
+          stderr: result.stderr,
+          data: {
+            cwd,
+            mode,
+            command: command.display,
+            generatedFiles
+          }
+        };
+      } catch (error) {
+        const err = error as Error & { stdout?: string; stderr?: string; code?: number; signal?: string };
+        return {
+          ok: false,
+          summary: `Claude Code delegation failed${err.code ? ` with exit code ${err.code}` : ""}.`,
+          stdout: err.stdout,
+          stderr: err.stderr || err.message,
+          error: err.message,
+          data: {
+            cwd,
+            mode,
+            command: command.display,
+            signal: err.signal
+          }
+        };
+      }
     }
   );
 
@@ -2052,7 +2153,12 @@ async function loadSystemPrompt(promptPath: string) {
   }
 }
 
-function buildAgentContextMessages(conversation: Conversation, context: ToolContext, outputRelativePath: string): ChatMessage[] {
+function buildAgentContextMessages(
+  conversation: Conversation,
+  context: ToolContext,
+  outputRelativePath: string,
+  mode: AgentRunMode = "agent"
+): ChatMessage[] {
   const recentMessages = selectRecentContextMessages(conversation.messages);
   const omittedCount = Math.max(0, conversation.messages.length - recentMessages.length);
   const messages: ChatMessage[] = [
@@ -2076,6 +2182,13 @@ function buildAgentContextMessages(conversation: Conversation, context: ToolCont
     }
   ];
 
+  if (mode === "team") {
+    messages.push({
+      role: "system",
+      content: formatMetaXTeamModePrompt()
+    });
+  }
+
   if (omittedCount > 0) {
     messages.push({
       role: "system",
@@ -2089,6 +2202,30 @@ function buildAgentContextMessages(conversation: Conversation, context: ToolCont
 
   messages.push(...recentMessages.map((message) => toChatMessage(message, { compact: true })));
   return messages;
+}
+
+function normalizeAgentRunMode(mode: unknown): AgentRunMode {
+  return mode === "team" ? "team" : "agent";
+}
+
+function ensureModeToolDefinitions(definitions: ToolDefinition[], mode: AgentRunMode) {
+  if (mode !== "team" || definitions.some((definition) => definition.function.name === "delegate_to_claude_code")) {
+    return definitions;
+  }
+  const claudeCodeTool = toolRegistry.get("delegate_to_claude_code");
+  return claudeCodeTool ? [...definitions, claudeCodeTool.definition] : definitions;
+}
+
+function formatMetaXTeamModePrompt() {
+  return [
+    "Agent cluster mode is enabled. Use the MetaX orchestration pattern: compile the user request into a clear task spec, route work to specialized sub-agents, run primary work before review, then aggregate the final answer.",
+    "Available logical sub-agents:",
+    "- ClaudeCodeAgent: replaces MetaX CodingAgent. For implementation, debugging, refactoring, repository edits, and tests, call delegate_to_claude_code with a precise task brief. Treat Claude Code as the executor and SuperCodex as supervisor.",
+    "- ResearchAgent: use SuperCodex web, file, attachment, and reading tools for discovery, synthesis, source checking, and context gathering.",
+    "- ReviewAgent: after primary work, inspect outputs, risks, acceptance criteria, and verification evidence before the final answer.",
+    "Routing rules: select ClaudeCodeAgent when needs.code=true; select ResearchAgent when needs.research=true; select ReviewAgent whenever the task asks for review or after any code/research route. If no route is obvious, default to ClaudeCodeAgent only for local project/code work, otherwise use the ordinary SuperCodex tool flow.",
+    "Final answer should briefly name the selected route, summarize each sub-agent result, list generated artifacts or verification, and call out unresolved risks."
+  ].join("\n");
 }
 
 function selectRecentContextMessages(messages: StoredMessage[]) {
@@ -2775,6 +2912,83 @@ async function resolveCommandCwd(cwd: unknown, context: ToolContext) {
   if (rawCwd) return safeResolvePath(rawCwd, context.workspacePath);
   await fs.mkdir(context.outputPath, { recursive: true });
   return context.outputPath;
+}
+
+function buildClaudeCodePrompt(task: string, mode: string, context: ToolContext, cwd: string) {
+  const relativeCwd = path.relative(context.workspacePath, cwd) || ".";
+  const modeGuidance =
+    mode === "inspect"
+      ? "Inspect the repository and report findings. Do not edit files unless the task explicitly requires it."
+      : mode === "test"
+        ? "Focus on running or improving verification for the requested behavior. Keep edits scoped to tests or necessary fixes."
+        : "Implement the requested changes directly in the repository, keeping the patch focused and preserving unrelated user changes.";
+
+  return [
+    "You are being supervised by SuperCodex as the implementation agent for this local project task.",
+    `Workspace root: ${context.workspacePath}`,
+    `Current working directory: ${cwd} (${relativeCwd})`,
+    "",
+    "Task:",
+    task,
+    "",
+    "Operating rules:",
+    "- Inspect the repository before editing and follow existing architecture, style, and tests.",
+    "- Keep changes scoped to the task. Do not perform destructive cleanup, git reset, git clean, or discard unrelated local changes.",
+    "- Run relevant tests or build checks when feasible, and report exactly what you ran.",
+    `- ${modeGuidance}`,
+    "",
+    "Return a concise completion report with changed files, verification, and any remaining caveats."
+  ].join("\n");
+}
+
+function splitCommandArgs(input: string) {
+  const args: string[] = [];
+  let current = "";
+  let quote: "'" | "\"" | "" = "";
+  let escaping = false;
+
+  for (const char of input) {
+    if (escaping) {
+      current += char;
+      escaping = false;
+      continue;
+    }
+    if (char === "\\" && quote !== "'") {
+      escaping = true;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) quote = "";
+      else current += char;
+      continue;
+    }
+    if (char === "'" || char === "\"") {
+      quote = char;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      if (current) {
+        args.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += char;
+  }
+
+  if (escaping) current += "\\";
+  if (quote) throw new Error("Unclosed quote in CLAUDE_CODE_ARGS");
+  if (current) args.push(current);
+  return args;
+}
+
+function formatCommandForDisplay(parts: string[]) {
+  return parts.map((part) => (/^[A-Za-z0-9_./:=@%+<>-]+$/.test(part) ? part : `'${part.replace(/'/g, "'\\''")}'`)).join(" ");
+}
+
+function readPositiveIntegerEnv(name: string, fallback: number) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
 }
 
 type GeneratedFileSnapshot = Map<string, { mtimeMs: number; size: number }>;

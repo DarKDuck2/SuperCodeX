@@ -220,6 +220,7 @@ Agent 的系统提示词不再写死在 `server/index.ts` 中，而是维护在 
 | `read_file` | 读取文本文件 |
 | `write_file` | 写入或创建文本文件 |
 | `run_command` | 执行安全 shell 命令 |
+| `delegate_to_claude_code` | 将代码实现、修复、重构和测试任务委派给 Claude Code 执行 |
 | `search_files` | 使用 ripgrep 搜索项目文件 |
 | `replace_in_file` | 精确替换文件内容 |
 | `run_tests` | 运行测试、lint 或构建命令 |
@@ -241,6 +242,22 @@ Agent 的系统提示词不再写死在 `server/index.ts` 中，而是维护在 
 SuperCodex 默认完全自动执行 Agent 选择的工具，不要求用户在任务中途逐次确认。为了避免破坏性操作，后端会自动拦截删除、移入废纸篓、`find -delete`、`git clean`、`git reset --hard`、格式化磁盘、写入块设备、提权、关机重启等危险命令。文件工具仍限制在当前工作区内运行。
 
 安全策略位于 `server/core/security.ts`，路径限制位于 `server/core/paths.ts`。这些规则有最小测试覆盖，方便开源后审查和扩展。
+
+### Claude Code 委派
+
+代码类任务会优先暴露 `delegate_to_claude_code` 工具，让 SuperCodex 作为监工把实现、修复、重构或测试任务交给 Claude Code。默认命令为：
+
+```bash
+claude --print --dangerously-skip-permissions "<task prompt>"
+```
+
+可通过环境变量调整本机 Claude Code 调用方式：
+
+```bash
+CLAUDE_CODE_EXECUTABLE=claude
+CLAUDE_CODE_ARGS="--print --dangerously-skip-permissions"
+CLAUDE_CODE_TIMEOUT_MS=600000
+```
 
 ## 流式执行事件
 

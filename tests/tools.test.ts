@@ -124,6 +124,7 @@ describe("tool orchestration", () => {
     const tools = [
       testTool("read_file", "read"),
       testTool("run_command", "shell"),
+      testTool("delegate_to_claude_code", "shell", ["code"]),
       testTool("search_web", "network"),
       testTool("webbridge_command", "external")
     ];
@@ -145,6 +146,22 @@ describe("tool orchestration", () => {
       context: { workspacePath: process.cwd(), outputPath: process.cwd(), attachments: [] }
     }).map((tool) => tool.definition.function.name);
     assert.deepEqual(commandTask, ["read_file", "run_command"]);
+  });
+
+  it("selects Claude Code delegation for coding tasks", () => {
+    const tools = [
+      testTool("read_file", "read"),
+      testTool("run_command", "shell"),
+      testTool("delegate_to_claude_code", "shell", ["code"]),
+      testTool("search_web", "network")
+    ];
+
+    const names = selectToolsForTask(tools, {
+      prompt: "帮我实现这个项目里的登录 bug 修复并运行测试",
+      context: { workspacePath: process.cwd(), outputPath: process.cwd(), attachments: [] }
+    }).map((tool) => tool.definition.function.name);
+
+    assert.deepEqual(names, ["read_file", "run_command", "delegate_to_claude_code"]);
   });
 
   it("expands tool selection from active skill categories", () => {
