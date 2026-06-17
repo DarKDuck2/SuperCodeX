@@ -58,6 +58,7 @@ import {
 import { readSseStream } from "./lib/stream";
 import type {
   ActiveView,
+  AgentRunMode,
   AgentStreamEvent,
   ApiSettings,
   AppState,
@@ -108,7 +109,7 @@ function App() {
   const [isBooting, setIsBooting] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsStatus, setSettingsStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [mode, setMode] = useState<"agent" | "team">("agent");
+  const [mode, setMode] = useState<AgentRunMode>("agent");
   const [activeView, setActiveView] = useState<ActiveView>("home");
   const [appError, setAppError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -364,6 +365,7 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           config: settings.apiKey ? settings : undefined,
+          mode,
           content: prompt || "请处理这些附件。",
           attachmentIds: pendingAttachments.map((attachment) => attachment.id),
           stream: true
@@ -1404,9 +1406,10 @@ function App() {
                   <button
                     className={`agentToggle ${mode === "team" ? "active" : ""}`}
                     type="button"
+                    title="按 MetaX 风格路由 Coding / Research / Review，代码执行委派给 Claude Code"
                     onClick={() => setMode("team")}
                   >
-                    Agent 集群
+                    MetaX 集群
                   </button>
                   <button className="micButton" type="button" title="语音输入">
                     <Mic size={18} />

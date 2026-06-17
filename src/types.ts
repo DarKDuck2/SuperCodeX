@@ -33,6 +33,8 @@ export type ApiSettings = {
   model: string;
 };
 
+export type AgentRunMode = "agent" | "team";
+
 export type Project = {
   id: string;
   name: string;
