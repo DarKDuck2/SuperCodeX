@@ -24,6 +24,79 @@ const documentTaskPattern = /docx|word|文档|报告|润色|写作|document/i;
 const presentationTaskPattern = /ppt|pptx|幻灯片|演示|deck|slides|presentation/i;
 const claudeCodeTaskPattern = /代码|bug|修复|实现|改动|重构|开发|仓库|repo|code|coding|refactor|bug|fix|implement/i;
 
+export type TaskClassificationInput = {
+  prompt: string;
+  context: ToolContext;
+  activeSkillCategories?: string[];
+  activeSkillKeywords?: string[];
+};
+
+export type TaskClassification = {
+  selectorText: string;
+  activeCategories: Set<string>;
+  hasAttachments: boolean;
+  hasImages: boolean;
+  hasPdfAttachment: boolean;
+  hasSpreadsheetAttachment: boolean;
+  hasDocumentAttachment: boolean;
+  hasPresentationAttachment: boolean;
+  needsCode: boolean;
+  needsShell: boolean;
+  needsWeb: boolean;
+  needsImages: boolean;
+  needsBrowser: boolean;
+  needsOffice: boolean;
+  needsOfficeTools: boolean;
+  needsPdf: boolean;
+  needsSpreadsheet: boolean;
+  needsDocuments: boolean;
+  needsPresentation: boolean;
+  needsClaudeCode: boolean;
+};
+
+export function classifyTask(input: TaskClassificationInput): TaskClassification {
+  const prompt = input.prompt.trim();
+  const skillText = [...(input.activeSkillCategories || []), ...(input.activeSkillKeywords || [])].join(" ");
+  const selectorText = `${prompt} ${skillText}`;
+  const activeCategories = new Set((input.activeSkillCategories || []).map((category) => category.toLowerCase()));
+  const hasAttachments = input.context.attachments.length > 0;
+  const hasImages = input.context.attachments.some((attachment) => attachment.kind === "image");
+  const hasPdfAttachment = input.context.attachments.some(isPdfAttachment);
+  const hasSpreadsheetAttachment = input.context.attachments.some(isSpreadsheetAttachment);
+  const hasDocumentAttachment = input.context.attachments.some(isDocumentAttachment);
+  const hasPresentationAttachment = input.context.attachments.some(isPresentationAttachment);
+  const needsCode = codeTaskPattern.test(selectorText);
+  const needsOffice = officeTaskPattern.test(selectorText) || activeCategories.has("office");
+  const needsOfficeTools = needsOffice || activeCategories.has("research");
+  const needsPdf = pdfTaskPattern.test(selectorText) || activeCategories.has("pdf");
+  const needsSpreadsheet = spreadsheetTaskPattern.test(selectorText) || activeCategories.has("spreadsheet");
+  const needsDocuments = documentTaskPattern.test(selectorText) || activeCategories.has("documents");
+  const needsPresentation = presentationTaskPattern.test(selectorText) || activeCategories.has("presentation");
+
+  return {
+    selectorText,
+    activeCategories,
+    hasAttachments,
+    hasImages,
+    hasPdfAttachment,
+    hasSpreadsheetAttachment,
+    hasDocumentAttachment,
+    hasPresentationAttachment,
+    needsCode,
+    needsShell: shellTaskPattern.test(selectorText) || needsCode || needsOfficeTools,
+    needsWeb: webTaskPattern.test(selectorText) || activeCategories.has("search") || activeCategories.has("research"),
+    needsImages: hasImages || imageTaskPattern.test(selectorText),
+    needsBrowser: browserTaskPattern.test(selectorText) || activeCategories.has("browser"),
+    needsOffice,
+    needsOfficeTools,
+    needsPdf,
+    needsSpreadsheet,
+    needsDocuments,
+    needsPresentation,
+    needsClaudeCode: claudeCodeTaskPattern.test(selectorText) || activeCategories.has("code")
+  };
+}
+
 export function selectToolsForTask(
   tools: RegisteredTool[],
   input: {
@@ -34,46 +107,27 @@ export function selectToolsForTask(
     activeSkillKeywords?: string[];
   }
 ) {
-  const prompt = input.prompt.trim();
-  const skillText = [...(input.activeSkillCategories || []), ...(input.activeSkillKeywords || [])].join(" ");
-  const selectorText = `${prompt} ${skillText}`;
+  const classification = classifyTask(input);
   const activeSkillIds = new Set(input.activeSkillIds || []);
-  const activeCategories = new Set((input.activeSkillCategories || []).map((category) => category.toLowerCase()));
-  const hasAttachments = input.context.attachments.length > 0;
-  const hasImages = input.context.attachments.some((attachment) => attachment.kind === "image");
-  const hasPdfAttachment = input.context.attachments.some(isPdfAttachment);
-  const hasSpreadsheetAttachment = input.context.attachments.some(isSpreadsheetAttachment);
-  const hasDocumentAttachment = input.context.attachments.some(isDocumentAttachment);
-  const hasPresentationAttachment = input.context.attachments.some(isPresentationAttachment);
-  const includeOfficeTools = officeTaskPattern.test(selectorText) || activeCategories.has("office") || activeCategories.has("research");
-  const includePdf = pdfTaskPattern.test(selectorText) || activeCategories.has("pdf");
-  const includeSpreadsheet = spreadsheetTaskPattern.test(selectorText) || activeCategories.has("spreadsheet");
-  const includeDocuments = documentTaskPattern.test(selectorText) || activeCategories.has("documents");
-  const includePresentation = presentationTaskPattern.test(selectorText) || activeCategories.has("presentation");
-  const includeShell = shellTaskPattern.test(selectorText) || codeTaskPattern.test(selectorText) || includeOfficeTools;
-  const includeWeb = webTaskPattern.test(selectorText) || activeCategories.has("search") || activeCategories.has("research");
-  const includeImages = hasImages || imageTaskPattern.test(selectorText);
-  const includeBrowser = browserTaskPattern.test(selectorText) || activeCategories.has("browser");
-  const includeClaudeCode = claudeCodeTaskPattern.test(selectorText) || activeCategories.has("code");
 
   return tools.filter((tool) => {
     const name = tool.definition.function.name;
     const metadata = tool.metadata;
     if (metadata.skillIds?.some((skillId) => activeSkillIds.has(skillId))) return true;
-    if (metadata.categories?.some((category) => activeCategories.has(category.toLowerCase()))) return true;
+    if (metadata.categories?.some((category) => classification.activeCategories.has(category.toLowerCase()))) return true;
     if (alwaysAvailable.has(name)) return true;
-    if (name === "run_command") return includeShell;
-    if (name === "delegate_to_claude_code") return includeClaudeCode;
-    if (name === "fetch_url" || name === "search_web") return includeWeb;
-    if (name === "transform_image") return includeImages;
-    if (name === "webbridge_status" || name === "webbridge_command") return includeBrowser;
-    if (name === "extract_pdf_text") return hasPdfAttachment || includePdf;
-    if (name === "read_spreadsheet") return hasSpreadsheetAttachment || includeSpreadsheet;
-    if (name === "create_spreadsheet") return includeSpreadsheet;
-    if (name === "extract_docx_text") return hasDocumentAttachment || includeDocuments;
-    if (name === "inspect_presentation") return hasPresentationAttachment || includePresentation;
-    if (tool.metadata.permissions.includes("attachments:read")) return hasAttachments;
-    if (metadata.categories?.includes("office")) return includeOfficeTools;
+    if (name === "run_command") return classification.needsShell;
+    if (name === "delegate_to_claude_code") return classification.needsClaudeCode;
+    if (name === "fetch_url" || name === "search_web") return classification.needsWeb;
+    if (name === "transform_image") return classification.needsImages;
+    if (name === "webbridge_status" || name === "webbridge_command") return classification.needsBrowser;
+    if (name === "extract_pdf_text") return classification.hasPdfAttachment || classification.needsPdf;
+    if (name === "read_spreadsheet") return classification.hasSpreadsheetAttachment || classification.needsSpreadsheet;
+    if (name === "create_spreadsheet") return classification.needsSpreadsheet;
+    if (name === "extract_docx_text") return classification.hasDocumentAttachment || classification.needsDocuments;
+    if (name === "inspect_presentation") return classification.hasPresentationAttachment || classification.needsPresentation;
+    if (tool.metadata.permissions.includes("attachments:read")) return classification.hasAttachments;
+    if (metadata.categories?.includes("office")) return classification.needsOfficeTools;
     return false;
   });
 }

@@ -1,4 +1,6 @@
 import type { ToolCall, ToolTrace } from "../tools/types.js";
+import type { PipelineDefinition, PipelineTemplate } from "../agent/pipeline.js";
+import type { ReviewVerdict, SkillContextBundle, TaskSpec } from "../agent/spec.js";
 
 export type Role = "system" | "user" | "assistant" | "tool";
 
@@ -17,6 +19,8 @@ export type ApiConfig = {
 };
 
 export type AgentRunMode = "agent" | "team";
+
+export type DeliveryMode = "fast" | "standard" | "strict";
 
 export type Message = {
   id: string;
@@ -187,10 +191,40 @@ export type AgentResult = {
   turns: number;
 };
 
+export type AgentRunOptions = {
+  deliveryMode?: DeliveryMode;
+};
+
 export type AgentEvent =
   | { type: "step"; turn: number; message: string }
+  | { type: "task_spec"; pipelineId: string; spec: TaskSpec; skillBundles: SkillContextBundle[] }
+  | {
+      type: "team_pipeline_start";
+      pipelineId: string;
+      template: PipelineTemplate;
+      stages: Array<{
+        name: string;
+        parallel: boolean;
+        agents: Array<{ role: string; toolCount: number }>;
+      }>;
+    }
+  | { type: "sub_agent_start"; pipelineId: string; stageIndex: number; agentRole: string; agentId: string }
+  | { type: "sub_agent_step"; pipelineId: string; stageIndex: number; agentRole: string; turn: number; message: string }
+  | { type: "sub_agent_tool_call"; pipelineId: string; stageIndex: number; agentRole: string; toolName: string; args: string }
+  | { type: "sub_agent_tool_result"; pipelineId: string; stageIndex: number; agentRole: string; result: string }
+  | { type: "sub_agent_done"; pipelineId: string; stageIndex: number; agentRole: string; summary: string }
+  | { type: "stage_done"; pipelineId: string; stageIndex: number }
+  | { type: "review_verdict"; pipelineId: string; iteration: number; verdict: ReviewVerdict }
+  | { type: "repair_iteration_start"; pipelineId: string; iteration: number; roles: string[] }
   | { type: "assistant_tool_call"; turn: number; message: Message }
   | { type: "tool_result"; turn: number; message: ToolMessage }
   | { type: "usage"; turn: number; call: LlmCallUsage; totals: TokenUsageMetrics }
+  | {
+      type: "team_final";
+      pipelineId: string;
+      pipeline: PipelineDefinition;
+      finalMessage: Message;
+      subAgentResults: unknown[];
+    }
   | { type: "final"; turn: number; message: Message; conversation: Conversation; toolCalls: AgentResult["toolCalls"]; usage?: ConversationUsage }
   | { type: "error"; error: string };

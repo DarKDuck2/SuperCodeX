@@ -5,6 +5,7 @@ import path from "node:path";
 import { computeNextRunAt, normalizeScheduleText, parseAutomationInput } from "../automation/schedule.js";
 import { getFileResponseMetadata, openLocalFile } from "../core/local-files.js";
 import { normalizeLocalPath, safeResolvePath } from "../core/paths.js";
+import { normalizeDeliveryMode } from "../agent/spec.js";
 import { executeStructuredCommand, normalizeCommandInput } from "../tools/command.js";
 import { openWebSearch } from "../web/search.js";
 import type { ToolRegistry } from "../tools/registry.js";
@@ -13,6 +14,7 @@ import type {
   AgentEvent,
   AgentResult,
   AgentRunMode,
+  AgentRunOptions,
   ApiConfig,
   Attachment,
   Automation,
@@ -59,7 +61,8 @@ type RegisterApiRoutesDependencies = {
     config?: ApiConfig,
     onEvent?: (event: AgentEvent) => void,
     signal?: AbortSignal,
-    mode?: AgentRunMode
+    mode?: AgentRunMode,
+    options?: AgentRunOptions
   ) => Promise<AgentResult>;
   writeAgentEvent: (res: express.Response, event: AgentEvent) => void;
   callLLM: (messages: ChatMessage[], config?: ApiConfig, enableTools?: boolean) => Promise<ChatCompletionResponse>;
@@ -305,15 +308,17 @@ export function registerApiRoutes(app: express.Express, deps: RegisterApiRoutesD
   
   app.post("/api/conversations/:id/messages", async (req, res) => {
     const conversation = conversations.get(req.params.id);
-    const { content, config, attachmentIds, stream, mode } = req.body as {
+    const { content, config, attachmentIds, stream, mode, deliveryMode } = req.body as {
       content?: string;
       config?: ApiConfig;
       attachmentIds?: string[];
       stream?: boolean;
       mode?: AgentRunMode;
+      deliveryMode?: AgentRunOptions["deliveryMode"];
     };
     const prompt = content?.trim();
     const runMode = normalizeAgentRunMode(mode);
+    const runOptions: AgentRunOptions = { deliveryMode: normalizeDeliveryMode(deliveryMode) };
   
     if (!conversation) {
       res.status(404).json({ error: "conversation not found" });
@@ -357,7 +362,14 @@ export function registerApiRoutes(app: express.Express, deps: RegisterApiRoutesD
       });
       writeAgentEvent(res, { type: "step", turn: 0, message: "收到用户请求，开始规划工具使用。" });
       try {
-        await runAgentLoop(conversation, config, (event) => writeAgentEvent(res, event), streamAbortController.signal, runMode);
+        await runAgentLoop(
+          conversation,
+          config,
+          (event) => writeAgentEvent(res, event),
+          streamAbortController.signal,
+          runMode,
+          runOptions
+        );
         streamCompleted = true;
         if (!res.destroyed && !res.writableEnded) {
           res.write("data: [DONE]\n\n");
@@ -378,7 +390,7 @@ export function registerApiRoutes(app: express.Express, deps: RegisterApiRoutesD
     }
   
     try {
-      const agentResult = await runAgentLoop(conversation, config, undefined, undefined, runMode);
+      const agentResult = await runAgentLoop(conversation, config, undefined, undefined, runMode, runOptions);
       res.status(201).json({
         conversation,
         userMessage,

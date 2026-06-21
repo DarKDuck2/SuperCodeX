@@ -35,6 +35,8 @@ export type ApiSettings = {
 
 export type AgentRunMode = "agent" | "team";
 
+export type DeliveryMode = "fast" | "standard" | "strict";
+
 export type Project = {
   id: string;
   name: string;
@@ -128,6 +130,54 @@ export type WebBridgeStatus = {
 
 export type AgentStreamEvent =
   | { type: "step"; turn: number; message: string }
+  | {
+      type: "task_spec";
+      pipelineId: string;
+      spec: {
+        id: string;
+        complexity: string;
+        domains: string[];
+        goal: string;
+        deliverables: string[];
+        constraints: string[];
+        requiredSkills: string[];
+        acceptanceCriteria: string[];
+        verificationPlan: string[];
+        risks: string[];
+        maxIterations: number;
+      };
+      skillBundles: Array<{ skillId: string; title: string }>;
+    }
+  | {
+      type: "team_pipeline_start";
+      pipelineId: string;
+      template: string;
+      stages: Array<{
+        name: string;
+        parallel: boolean;
+        agents: Array<{ role: string; toolCount: number }>;
+      }>;
+    }
+  | { type: "sub_agent_start"; pipelineId: string; stageIndex: number; agentRole: string; agentId: string }
+  | { type: "sub_agent_step"; pipelineId: string; stageIndex: number; agentRole: string; turn: number; message: string }
+  | { type: "sub_agent_tool_call"; pipelineId: string; stageIndex: number; agentRole: string; toolName: string; args: string }
+  | { type: "sub_agent_tool_result"; pipelineId: string; stageIndex: number; agentRole: string; result: string }
+  | { type: "sub_agent_done"; pipelineId: string; stageIndex: number; agentRole: string; summary: string }
+  | { type: "stage_done"; pipelineId: string; stageIndex: number }
+  | {
+      type: "review_verdict";
+      pipelineId: string;
+      iteration: number;
+      verdict: {
+        passed: boolean;
+        score: number;
+        failedCriteria: string[];
+        requiredFixes: string[];
+        risks: string[];
+        summary: string;
+      };
+    }
+  | { type: "repair_iteration_start"; pipelineId: string; iteration: number; roles: string[] }
   | { type: "assistant_tool_call"; turn: number; message: Message }
   | { type: "tool_result"; turn: number; message: ToolMessage }
   | {
@@ -136,6 +186,13 @@ export type AgentStreamEvent =
       message: Message;
       conversation: { messages: StoredMessage[] };
       toolCalls: unknown[];
+    }
+  | {
+      type: "team_final";
+      pipelineId: string;
+      pipeline: unknown;
+      finalMessage: Message;
+      subAgentResults: unknown[];
     }
   | { type: "error"; error: string };
 
