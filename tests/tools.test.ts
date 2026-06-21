@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { normalizeCommandInput } from "../server/tools/command.js";
 import { ToolRegistry } from "../server/tools/registry.js";
 import { runRegisteredTool, truncateToolResultForModel } from "../server/tools/runtime.js";
-import { selectToolsForTask } from "../server/tools/selection.js";
+import { classifyTask, selectToolsForTask } from "../server/tools/selection.js";
 import type { RegisteredTool, ToolRiskLevel } from "../server/tools/types.js";
 
 describe("tool orchestration", () => {
@@ -110,6 +110,32 @@ describe("tool orchestration", () => {
     assert.match(approved.modelContent, /ran/);
   });
 
+  it("returns a recoverable tool result for invalid tool argument JSON", async () => {
+    let invoked = false;
+    const tool = {
+      ...testTool("read_file", "read"),
+      handler: async () => {
+        invoked = true;
+        return "should not run";
+      }
+    };
+
+    const result = await runRegisteredTool(
+      {
+        id: "call_bad_json",
+        type: "function",
+        function: { name: "read_file", arguments: "{bad json" }
+      },
+      tool,
+      { workspacePath: process.cwd(), outputPath: process.cwd(), attachments: [] }
+    );
+
+    assert.equal(invoked, false);
+    assert.equal(result.trace.policy.action, "deny");
+    assert.equal(result.trace.result?.ok, false);
+    assert.match(result.modelContent, /Tool argument error/);
+  });
+
   it("truncates large tool results while preserving head and tail context", () => {
     const text = `${"a".repeat(80)} middle ${"z".repeat(80)}`;
     const truncated = truncateToolResultForModel(text, "search_files", 100);
@@ -118,6 +144,58 @@ describe("tool orchestration", () => {
     assert.match(truncated, /output truncated/);
     assert.match(truncated, /^a+/);
     assert.match(truncated, /z+$/);
+  });
+
+  it("classifies task intent as reusable routing signals", () => {
+    const context = { workspacePath: process.cwd(), outputPath: process.cwd(), attachments: [] };
+
+    const mixedTask = classifyTask({
+      prompt: "先搜索最新资料，再实现这个项目里的 bug 修复并运行测试",
+      context
+    });
+
+    assert.equal(mixedTask.needsWeb, true);
+    assert.equal(mixedTask.needsCode, true);
+    assert.equal(mixedTask.needsShell, true);
+    assert.equal(mixedTask.needsClaudeCode, true);
+
+    const officeTask = classifyTask({
+      prompt: "整理这份数据",
+      context,
+      activeSkillCategories: ["spreadsheet", "office"],
+      activeSkillKeywords: ["xlsx", "公式"]
+    });
+
+    assert.equal(officeTask.needsOffice, true);
+    assert.equal(officeTask.needsSpreadsheet, true);
+    assert.equal(officeTask.needsShell, true);
+  });
+
+  it("classifies attachment-driven office needs", () => {
+    const pdfTask = classifyTask({
+      prompt: "总结这个文件",
+      context: {
+        workspacePath: process.cwd(),
+        outputPath: process.cwd(),
+        attachments: [
+          {
+            id: "attachment_pdf",
+            conversationId: "conversation_1",
+            originalName: "report.pdf",
+            fileName: "report.pdf",
+            mimeType: "application/pdf",
+            size: 1024,
+            path: "/tmp/report.pdf",
+            kind: "file",
+            createdAt: new Date().toISOString()
+          }
+        ]
+      }
+    });
+
+    assert.equal(pdfTask.hasAttachments, true);
+    assert.equal(pdfTask.hasPdfAttachment, true);
+    assert.equal(pdfTask.needsPdf, false);
   });
 
   it("selects task-relevant tools conservatively", () => {

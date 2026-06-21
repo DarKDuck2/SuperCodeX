@@ -67,6 +67,7 @@ import type {
   Automation,
   AutomationPreview,
   ConversationSummary,
+  DeliveryMode,
   Message,
   Project,
   ProjectTreeNode,
@@ -97,6 +98,59 @@ const skillIcons: Record<string, typeof Slack> = {
   webbridge: Globe2
 };
 
+type TeamAgentView = {
+  role: string;
+  agentId?: string;
+  status: "pending" | "running" | "done" | "error";
+  turn: number;
+  toolCount: number;
+  toolEvents: Array<{ kind: "call" | "result"; label: string; content: string }>;
+  summary?: string;
+};
+
+type TeamStageView = {
+  name: string;
+  parallel: boolean;
+  done: boolean;
+  agents: TeamAgentView[];
+};
+
+type DeliverySpecView = {
+  id: string;
+  complexity: string;
+  domains: string[];
+  goal: string;
+  deliverables: string[];
+  constraints: string[];
+  requiredSkills: string[];
+  acceptanceCriteria: string[];
+  verificationPlan: string[];
+  risks: string[];
+  maxIterations: number;
+};
+
+type DeliveryReviewView = {
+  iteration: number;
+  passed: boolean;
+  score: number;
+  summary: string;
+  failedCriteria: string[];
+  requiredFixes: string[];
+  risks: string[];
+};
+
+type TeamRunView = {
+  pipelineId: string;
+  template: string;
+  status: "running" | "done";
+  deliveryMode: DeliveryMode;
+  spec?: DeliverySpecView;
+  skillBundles: Array<{ skillId: string; title: string }>;
+  reviews: DeliveryReviewView[];
+  repairs: Array<{ iteration: number; roles: string[] }>;
+  stages: TeamStageView[];
+};
+
 function App() {
   const [messages, setMessages] = useState<StoredMessage[]>([]);
   const [input, setInput] = useState("");
@@ -110,6 +164,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsStatus, setSettingsStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [mode, setMode] = useState<AgentRunMode>("agent");
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("standard");
   const [activeView, setActiveView] = useState<ActiveView>("home");
   const [appError, setAppError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -129,6 +184,7 @@ function App() {
   const [automationPreview, setAutomationPreview] = useState<AutomationPreview | null>(null);
   const [isEditingAutomation, setIsEditingAutomation] = useState(false);
   const [automationDraft, setAutomationDraft] = useState({ title: "", schedule: "", prompt: "" });
+  const [teamRun, setTeamRun] = useState<TeamRunView | null>(null);
   const activeRequestRef = useRef<AbortController | null>(null);
   const messageStackRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -211,7 +267,7 @@ function App() {
       top: messageStackRef.current.scrollHeight,
       behavior: "smooth"
     });
-  }, [messages.length, isWorking]);
+  }, [messages.length, isWorking, teamRun]);
 
   async function loadAppState() {
     try {
@@ -248,6 +304,7 @@ function App() {
   async function loadMessages(conversationId: string) {
     setActiveView("home");
     setActiveConversationId(conversationId);
+    setTeamRun(null);
     const response = await fetch(`/api/conversations/${conversationId}/messages`);
     if (!response.ok) throw new Error("无法加载会话消息");
     const payload = (await response.json()) as { messages: StoredMessage[] };
@@ -344,6 +401,7 @@ function App() {
 
     setInput("");
     setPendingAttachments([]);
+    if (mode === "team") setTeamRun(null);
     setMessages((current) => [
       ...current,
       userMessage,
@@ -366,6 +424,7 @@ function App() {
         body: JSON.stringify({
           config: settings.apiKey ? settings : undefined,
           mode,
+          deliveryMode,
           content: prompt || "请处理这些附件。",
           attachmentIds: pendingAttachments.map((attachment) => attachment.id),
           stream: true
@@ -381,6 +440,7 @@ function App() {
       setActiveConversationId(conversationId);
     } catch (error) {
       const stopped = error instanceof DOMException && error.name === "AbortError";
+      setTeamRun((current) => (current ? { ...current, status: "done" } : current));
       setMessages((current) =>
         current.map((message) =>
           message.id === pendingId
@@ -407,6 +467,196 @@ function App() {
   }
 
   function handleAgentEvent(event: AgentStreamEvent, pendingId: string) {
+    if (event.type === "task_spec") {
+      setTeamRun((current) => ({
+        pipelineId: event.pipelineId,
+        template: current?.template || "preparing",
+        status: "running",
+        deliveryMode,
+        spec: event.spec,
+        skillBundles: event.skillBundles,
+        reviews: current?.reviews || [],
+        repairs: current?.repairs || [],
+        stages: current?.stages || []
+      }));
+      const lines = [
+        `已生成任务规格：${event.spec.complexity}`,
+        event.spec.domains.length ? `领域：${event.spec.domains.join(" / ")}` : "",
+        event.spec.requiredSkills.length ? `加载规范：${event.spec.requiredSkills.join(" / ")}` : "",
+        event.spec.acceptanceCriteria.length ? `验收标准：${event.spec.acceptanceCriteria.length} 项` : ""
+      ].filter(Boolean);
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === pendingId
+            ? {
+                ...message,
+                content: lines.join("\n")
+              }
+            : message
+        )
+      );
+      return;
+    }
+
+    if (event.type === "team_pipeline_start") {
+      setTeamRun((current) => ({
+        pipelineId: event.pipelineId,
+        template: event.template,
+        status: "running",
+        deliveryMode: current?.pipelineId === event.pipelineId ? current.deliveryMode : deliveryMode,
+        spec: current?.pipelineId === event.pipelineId ? current.spec : undefined,
+        skillBundles: current?.pipelineId === event.pipelineId ? current.skillBundles : [],
+        reviews: current?.pipelineId === event.pipelineId ? current.reviews : [],
+        repairs: current?.pipelineId === event.pipelineId ? current.repairs : [],
+        stages: event.stages.map((stage) => ({
+          name: stage.name,
+          parallel: stage.parallel,
+          done: false,
+          agents: stage.agents.map((agent) => ({
+            role: agent.role,
+            status: "pending",
+            turn: 0,
+            toolCount: agent.toolCount,
+            toolEvents: []
+          }))
+        }))
+      }));
+      return;
+    }
+
+    if (event.type === "sub_agent_start") {
+      updateTeamAgent(event.stageIndex, event.agentRole, (agent) => ({
+        ...agent,
+        agentId: event.agentId,
+        status: "running"
+      }));
+      return;
+    }
+
+    if (event.type === "sub_agent_step") {
+      updateTeamAgent(event.stageIndex, event.agentRole, (agent) => ({
+        ...agent,
+        status: "running",
+        turn: event.turn
+      }));
+      return;
+    }
+
+    if (event.type === "sub_agent_tool_call") {
+      updateTeamAgent(event.stageIndex, event.agentRole, (agent) => ({
+        ...agent,
+        status: "running",
+        toolEvents: [
+          ...agent.toolEvents,
+          { kind: "call", label: event.toolName, content: event.args || "{}" }
+        ]
+      }));
+      return;
+    }
+
+    if (event.type === "sub_agent_tool_result") {
+      updateTeamAgent(event.stageIndex, event.agentRole, (agent) => ({
+        ...agent,
+        toolEvents: [
+          ...agent.toolEvents,
+          { kind: "result", label: "result", content: event.result }
+        ]
+      }));
+      return;
+    }
+
+    if (event.type === "sub_agent_done") {
+      updateTeamAgent(event.stageIndex, event.agentRole, (agent) => ({
+        ...agent,
+        status: event.summary.includes("Status: Failed") ? "error" : "done",
+        summary: event.summary
+      }));
+      return;
+    }
+
+    if (event.type === "stage_done") {
+      setTeamRun((current) =>
+        current && current.pipelineId === event.pipelineId
+          ? {
+              ...current,
+              stages: current.stages.map((stage, index) =>
+                index === event.stageIndex
+                  ? {
+                      ...stage,
+                      done: true,
+                      agents: stage.agents.map((agent) =>
+                        agent.status === "pending" ? { ...agent, status: "done" } : agent
+                      )
+                    }
+                  : stage
+              )
+            }
+          : current
+      );
+      return;
+    }
+
+    if (event.type === "team_final") {
+      setTeamRun((current) =>
+        current && current.pipelineId === event.pipelineId ? { ...current, status: "done" } : current
+      );
+      return;
+    }
+
+    if (event.type === "review_verdict") {
+      setTeamRun((current) =>
+        current && current.pipelineId === event.pipelineId
+          ? {
+              ...current,
+              reviews: [
+                ...current.reviews.filter((review) => review.iteration !== event.iteration),
+                { iteration: event.iteration, ...event.verdict }
+              ].sort((a, b) => a.iteration - b.iteration)
+            }
+          : current
+      );
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === pendingId
+            ? {
+                ...message,
+                content: [
+                  `验收检查 ${event.verdict.passed ? "通过" : "未通过"}，评分 ${Math.round(event.verdict.score * 100)}%。`,
+                  event.verdict.summary,
+                  event.verdict.requiredFixes.length ? `待修复：${event.verdict.requiredFixes.join("；")}` : ""
+                ].filter(Boolean).join("\n")
+              }
+            : message
+        )
+      );
+      return;
+    }
+
+    if (event.type === "repair_iteration_start") {
+      setTeamRun((current) =>
+        current && current.pipelineId === event.pipelineId
+          ? {
+              ...current,
+              repairs: [
+                ...current.repairs.filter((repair) => repair.iteration !== event.iteration),
+                { iteration: event.iteration, roles: event.roles }
+              ].sort((a, b) => a.iteration - b.iteration)
+            }
+          : current
+      );
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === pendingId
+            ? {
+                ...message,
+                content: `验收未通过，开始第 ${event.iteration} 轮修复：${event.roles.join(" / ")}`
+              }
+            : message
+        )
+      );
+      return;
+    }
+
     if (event.type === "step") {
       setMessages((current) =>
         current.map((message) =>
@@ -439,6 +689,193 @@ function App() {
     if (event.type === "error") {
       throw new Error(event.error);
     }
+  }
+
+  function updateTeamAgent(stageIndex: number, agentRole: string, updater: (agent: TeamAgentView) => TeamAgentView) {
+    setTeamRun((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        stages: current.stages.map((stage, index) => {
+          if (index !== stageIndex) return stage;
+          return {
+            ...stage,
+            agents: stage.agents.map((agent) => (agent.role === agentRole ? updater(agent) : agent))
+          };
+        })
+      };
+    });
+  }
+
+  function renderTeamPipelinePanel() {
+    if (!teamRun) return null;
+    const totalAgents = teamRun.stages.reduce((total, stage) => total + stage.agents.length, 0);
+    const completedAgents = teamRun.stages.reduce(
+      (total, stage) => total + stage.agents.filter((agent) => agent.status === "done" || agent.status === "error").length,
+      0
+    );
+
+    return (
+      <section className="teamPipelinePanel">
+        <div className="teamPipelineHeader">
+          <span className={`teamPipelineIcon ${teamRun.status}`}>
+            {teamRun.status === "done" ? <Check size={16} /> : <Workflow size={16} />}
+          </span>
+          <div>
+            <strong>{formatPipelineTemplate(teamRun.template)}</strong>
+            <small>
+              {completedAgents}/{totalAgents} agents · {formatDeliveryModeLabel(teamRun.deliveryMode)} · {teamRun.status === "done" ? "done" : "running"}
+            </small>
+          </div>
+        </div>
+        {teamRun.spec && (
+          <div className="deliverySpecPanel">
+            <div className="deliverySpecHeader">
+              <span className={`deliveryBadge ${teamRun.spec.complexity}`}>{teamRun.spec.complexity}</span>
+              <div>
+                <strong>{teamRun.spec.goal}</strong>
+                <small>
+                  {teamRun.spec.domains.join(" / ") || "general"} · max repair {teamRun.spec.maxIterations}
+                </small>
+              </div>
+            </div>
+            <div className="deliveryGrid">
+              <div className="deliveryBlock">
+                <span>交付物</span>
+                <ul>
+                  {teamRun.spec.deliverables.slice(0, 4).map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="deliveryBlock">
+                <span>验收标准</span>
+                <ul>
+                  {teamRun.spec.acceptanceCriteria.slice(0, 4).map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            {(teamRun.skillBundles.length > 0 || teamRun.spec.risks.length > 0) && (
+              <div className="deliveryMetaRow">
+                {teamRun.skillBundles.length > 0 && (
+                  <div className="deliveryChips">
+                    <span>规范</span>
+                    {teamRun.skillBundles.map((bundle) => (
+                      <small key={bundle.skillId}>{bundle.title || bundle.skillId}</small>
+                    ))}
+                  </div>
+                )}
+                {teamRun.spec.risks.length > 0 && (
+                  <details className="deliveryRisks">
+                    <summary>风险 {teamRun.spec.risks.length}</summary>
+                    <ul>
+                      {teamRun.spec.risks.map((risk) => (
+                        <li key={risk}>{risk}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {(teamRun.reviews.length > 0 || teamRun.repairs.length > 0) && (
+          <div className="deliveryReviewPanel">
+            {teamRun.reviews.map((review) => (
+              <div className={`deliveryReview ${review.passed ? "passed" : "failed"}`} key={`review-${review.iteration}`}>
+                <span className="deliveryReviewIcon">
+                  {review.passed ? <Check size={14} /> : <ShieldCheck size={14} />}
+                </span>
+                <div>
+                  <strong>
+                    验收 {review.iteration + 1} · {review.passed ? "通过" : "需修复"} · {Math.round(review.score * 100)}%
+                  </strong>
+                  <p>{review.summary}</p>
+                  {review.requiredFixes.length > 0 && (
+                    <small>{review.requiredFixes.slice(0, 3).join("；")}</small>
+                  )}
+                </div>
+              </div>
+            ))}
+            {teamRun.repairs.map((repair) => (
+              <div className="deliveryRepair" key={`repair-${repair.iteration}`}>
+                <span>修复轮次 {repair.iteration}</span>
+                <small>{repair.roles.join(" / ")}</small>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="teamStages">
+          {teamRun.stages.map((stage, stageIndex) => (
+            <div className={`teamStage ${stage.done ? "done" : ""}`} key={`${teamRun.pipelineId}-${stageIndex}`}>
+              <div className="teamStageHeader">
+                <span>{stage.name}</span>
+                <small>{stage.parallel ? "parallel" : "sequential"}</small>
+              </div>
+              <div className="teamAgents">
+                {stage.agents.map((agent) => (
+                  <details className={`teamAgentCard ${agent.status}`} key={`${stageIndex}-${agent.role}`}>
+                    <summary>
+                      <span className="teamAgentStatus">
+                        {agent.status === "done" ? <Check size={14} /> : <CircleDot size={14} />}
+                      </span>
+                      <strong>{agent.role}</strong>
+                      <small>
+                        turn {agent.turn || 0} · {agent.toolEvents.length} events · {agent.toolCount} tools
+                      </small>
+                      <ChevronDown size={15} />
+                    </summary>
+                    <div className="teamAgentBody">
+                      {agent.toolEvents.length > 0 && (
+                        <div className="teamToolEvents">
+                          {agent.toolEvents.slice(-6).map((toolEvent, index) => (
+                            <div className="teamToolEvent" key={`${agent.role}-${index}`}>
+                              <strong>{toolEvent.kind === "call" ? `Call · ${toolEvent.label}` : "Result"}</strong>
+                              <pre>{formatTeamEventContent(toolEvent.content)}</pre>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {agent.summary ? (
+                        <div className="teamAgentSummary">{renderRichText(agent.summary)}</div>
+                      ) : (
+                        <p className="teamAgentEmpty">Waiting for result.</p>
+                      )}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  function formatPipelineTemplate(template: string) {
+    return template
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" → ");
+  }
+
+  function formatDeliveryModeLabel(value: DeliveryMode) {
+    if (value === "fast") return "快速";
+    if (value === "strict") return "严格";
+    return "标准";
+  }
+
+  function formatDeliveryModeHint(value: DeliveryMode) {
+    if (value === "fast") return "快速交付：少量规范注入，跳过修复循环，适合探索和草稿。";
+    if (value === "strict") return "严格交付：强制复杂交付标准，最多两轮修复，适合重要任务。";
+    return "标准交付：自动补齐规范和验收标准，必要时修复一轮。";
+  }
+
+  function formatTeamEventContent(value: string) {
+    if (value.length <= 900) return value;
+    return `${value.slice(0, 900).trimEnd()}\n[truncated]`;
   }
 
   function useSkillPrompt(title: string) {
@@ -1090,6 +1527,7 @@ function App() {
 
             {activeView === "home" && hasConversation && (
               <div className="messageStack" ref={messageStackRef}>
+                {renderTeamPipelinePanel()}
                 {buildMessageDisplayItems(messages).map((item) => {
                   if (item.type === "toolRound") {
                     const toolCalls = item.rounds.flatMap((round) => round.assistant?.tool_calls || []);
@@ -1278,176 +1716,193 @@ function App() {
               </form>
             )}
 
-            <form className="taskComposer" onSubmit={sendMessage}>
-              {pendingAttachments.length > 0 && (
-                <div className="attachmentTray">
-                  {pendingAttachments.map((attachment) => (
-                    <div className="attachmentChip" key={attachment.id}>
-                      <span className="attachmentThumb">
-                        {attachment.kind === "image" ? (
-                          <img src={attachment.url} alt={attachment.originalName} />
-                        ) : (
-                          <FileText size={16} />
-                        )}
-                      </span>
-                      <span>
-                        <strong>{attachment.originalName}</strong>
-                        <small>{formatFileSize(attachment.size)}</small>
-                      </span>
-                      <button
-                        type="button"
-                        title="移除附件"
-                        onClick={() => removePendingAttachment(attachment.id)}
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <textarea
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={handleComposerKeyDown}
-                onPaste={handlePaste}
-                placeholder='输入 "/" 快速使用技能'
-                rows={3}
-              />
-              <input
-                ref={fileInputRef}
-                className="hiddenFileInput"
-                type="file"
-                multiple
-                accept="image/*,.txt,.md,.csv,.json,.xml,.html,.css,.js,.jsx,.ts,.tsx,.py,.sql,.yaml,.yml,.toml,.log,.pdf,.doc,.docx,.xls,.xlsx"
-                onChange={(event) => {
-                  if (event.target.files) void uploadFiles(event.target.files);
-                }}
-              />
-              <div className="composerBar">
-                <div className="leftControls">
-                  <div className="addMenuWrap">
-                    <button
-                      className={`roundButton ${showAddMenu ? "active" : ""}`}
-                      type="button"
-                      title="添加"
-                      onClick={() => setShowAddMenu((value) => !value)}
-                    >
-                      <Plus size={22} />
-                    </button>
-                    {showAddMenu && (
-                      <div className="addMenu">
+            {activeView !== "automations" && activeView !== "webbridge" && (
+              <form className="taskComposer" onSubmit={sendMessage}>
+                {pendingAttachments.length > 0 && (
+                  <div className="attachmentTray">
+                    {pendingAttachments.map((attachment) => (
+                      <div className="attachmentChip" key={attachment.id}>
+                        <span className="attachmentThumb">
+                          {attachment.kind === "image" ? (
+                            <img src={attachment.url} alt={attachment.originalName} />
+                          ) : (
+                            <FileText size={16} />
+                          )}
+                        </span>
+                        <span>
+                          <strong>{attachment.originalName}</strong>
+                          <small>{formatFileSize(attachment.size)}</small>
+                        </span>
                         <button
                           type="button"
-                          onClick={() => {
-                            setShowAddMenu(false);
-                            fileInputRef.current?.click();
-                          }}
+                          title="移除附件"
+                          onClick={() => removePendingAttachment(attachment.id)}
                         >
-                          <Paperclip size={16} />
-                          上传文件或图片
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowAddMenu(false);
-                            setActiveView("home");
-                            setShowProjectLoader(true);
-                          }}
-                        >
-                          <Folder size={16} />
-                          选择本地项目
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowAddMenu(false);
-                            setInput((current) => current || "请读取并整理这个网页：");
-                          }}
-                        >
-                          <Globe2 size={16} />
-                          添加网页链接
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowAddMenu(false);
-                            void navigator.clipboard?.readText().then((text) => {
-                              if (text) setInput((current) => (current ? `${current}\n${text}` : text));
-                            });
-                          }}
-                        >
-                          <Clipboard size={16} />
-                          粘贴剪贴板文本
+                          <X size={14} />
                         </button>
                       </div>
-                    )}
+                    ))}
                   </div>
-                  <button
-                    className="permissionButton"
-                    type="button"
-                    title="自动执行常规操作，危险删除和重置类命令会被系统拦截"
-                  >
-                    <ShieldCheck size={17} />
-                    自动安全
-                  </button>
+                )}
+                <textarea
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  onKeyDown={handleComposerKeyDown}
+                  onPaste={handlePaste}
+                  placeholder='输入 "/" 快速使用技能'
+                  rows={3}
+                />
+                <input
+                  ref={fileInputRef}
+                  className="hiddenFileInput"
+                  type="file"
+                  multiple
+                  accept="image/*,.txt,.md,.csv,.json,.xml,.html,.css,.js,.jsx,.ts,.tsx,.py,.sql,.yaml,.yml,.toml,.log,.pdf,.doc,.docx,.xls,.xlsx"
+                  onChange={(event) => {
+                    if (event.target.files) void uploadFiles(event.target.files);
+                  }}
+                />
+                <div className="composerBar">
+                  <div className="leftControls">
+                    <div className="addMenuWrap">
+                      <button
+                        className={`roundButton ${showAddMenu ? "active" : ""}`}
+                        type="button"
+                        title="添加"
+                        onClick={() => setShowAddMenu((value) => !value)}
+                      >
+                        <Plus size={22} />
+                      </button>
+                      {showAddMenu && (
+                        <div className="addMenu">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowAddMenu(false);
+                              fileInputRef.current?.click();
+                            }}
+                          >
+                            <Paperclip size={16} />
+                            上传文件或图片
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowAddMenu(false);
+                              setActiveView("home");
+                              setShowProjectLoader(true);
+                            }}
+                          >
+                            <Folder size={16} />
+                            选择本地项目
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowAddMenu(false);
+                              setInput((current) => current || "请读取并整理这个网页：");
+                            }}
+                          >
+                            <Globe2 size={16} />
+                            添加网页链接
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowAddMenu(false);
+                              void navigator.clipboard?.readText().then((text) => {
+                                if (text) setInput((current) => (current ? `${current}\n${text}` : text));
+                              });
+                            }}
+                          >
+                            <Clipboard size={16} />
+                            粘贴剪贴板文本
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      className="permissionButton"
+                      type="button"
+                      title="自动执行常规操作，危险删除和重置类命令会被系统拦截"
+                    >
+                      <ShieldCheck size={17} />
+                      自动安全
+                    </button>
+                  </div>
+                  <div className="rightControls">
+                    <button className="textButton" type="button">
+                      {settings.model || "选择模型"}
+                      <ChevronDown size={16} />
+                    </button>
+                    <button
+                      className={`agentToggle ${mode === "agent" ? "active" : ""}`}
+                      type="button"
+                      onClick={() => setMode("agent")}
+                    >
+                      Agent
+                    </button>
+                    <button
+                      className={`agentToggle ${mode === "team" ? "active" : ""}`}
+                      type="button"
+                      title="按 MetaX 风格路由 Coding / Research / Review，代码执行委派给 Claude Code"
+                      onClick={() => setMode("team")}
+                    >
+                      MetaX 集群
+                    </button>
+                    {mode === "team" && (
+                      <div className="deliveryModeGroup" aria-label="交付强度">
+                        {(["fast", "standard", "strict"] as DeliveryMode[]).map((value) => (
+                          <button
+                            className={`deliveryModeButton ${deliveryMode === value ? "active" : ""}`}
+                            type="button"
+                            key={value}
+                            title={formatDeliveryModeHint(value)}
+                            onClick={() => setDeliveryMode(value)}
+                          >
+                            {formatDeliveryModeLabel(value)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <button className="micButton" type="button" title="语音输入">
+                      <Mic size={18} />
+                    </button>
+                    <button
+                      className={`submitButton ${isWorking ? "stop" : ""}`}
+                      type={isWorking ? "button" : "submit"}
+                      title={isWorking ? "停止回答" : "发送"}
+                      disabled={!isWorking && !input.trim()}
+                      onClick={isWorking ? stopAgentRun : undefined}
+                    >
+                      {isWorking ? <X size={20} /> : <ArrowUp size={22} />}
+                    </button>
+                  </div>
                 </div>
-                <div className="rightControls">
-                  <button className="textButton" type="button">
-                    {settings.model || "选择模型"}
+                <div className="contextBar">
+                  <button
+                    className={showProjectLoader ? "active" : ""}
+                    type="button"
+                    onClick={() => {
+                      setActiveView("home");
+                      setShowProjectLoader((value) => !value);
+                    }}
+                  >
+                    <Folder size={18} />
+                    {activeWorkspaceName ? activeWorkspaceName : "进入项目工作"}
                     <ChevronDown size={16} />
                   </button>
-                  <button
-                    className={`agentToggle ${mode === "agent" ? "active" : ""}`}
-                    type="button"
-                    onClick={() => setMode("agent")}
-                  >
-                    Agent
+                  <button type="button" onClick={() => fileInputRef.current?.click()}>
+                    <Paperclip size={17} />
+                    添加资料
                   </button>
-                  <button
-                    className={`agentToggle ${mode === "team" ? "active" : ""}`}
-                    type="button"
-                    title="按 MetaX 风格路由 Coding / Research / Review，代码执行委派给 Claude Code"
-                    onClick={() => setMode("team")}
-                  >
-                    MetaX 集群
-                  </button>
-                  <button className="micButton" type="button" title="语音输入">
-                    <Mic size={18} />
-                  </button>
-                  <button
-                    className={`submitButton ${isWorking ? "stop" : ""}`}
-                    type={isWorking ? "button" : "submit"}
-                    title={isWorking ? "停止回答" : "发送"}
-                    disabled={!isWorking && !input.trim()}
-                    onClick={isWorking ? stopAgentRun : undefined}
-                  >
-                    {isWorking ? <X size={20} /> : <ArrowUp size={22} />}
+                  <button type="button" onClick={createAutomation}>
+                    <Workflow size={17} />
+                    创建自动化
                   </button>
                 </div>
-              </div>
-              <div className="contextBar">
-                <button
-                  className={showProjectLoader ? "active" : ""}
-                  type="button"
-                  onClick={() => {
-                    setActiveView("home");
-                    setShowProjectLoader((value) => !value);
-                  }}
-                >
-                  <Folder size={18} />
-                  {activeWorkspaceName ? activeWorkspaceName : "进入项目工作"}
-                  <ChevronDown size={16} />
-                </button>
-                <button type="button" onClick={() => fileInputRef.current?.click()}>
-                  <Paperclip size={17} />
-                  添加资料
-                </button>
-                <button type="button" onClick={createAutomation}>
-                  <Workflow size={17} />
-                  创建自动化
-                </button>
-              </div>
-            </form>
+              </form>
+            )}
           </section>
         </div>
 

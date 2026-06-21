@@ -550,6 +550,8 @@ kbd {
 }
 
 .heroWork.withMessages .titleBlock {
+  width: min(960px, calc(100% - 38px));
+  align-self: center;
   text-align: left;
   justify-items: start;
   gap: 6px;
@@ -1197,6 +1199,37 @@ h1 {
   z-index: 1;
 }
 
+.deliveryModeGroup {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid #e4e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.deliveryModeButton {
+  min-width: 48px;
+  border: 0;
+  border-right: 1px solid #e4e7eb;
+  border-radius: 0;
+  background: transparent;
+  color: #666d75;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.deliveryModeButton:last-child {
+  border-right: 0;
+}
+
+.deliveryModeButton.active {
+  color: #1f7a4d;
+  background: #edf8f1;
+  font-weight: 800;
+}
+
 .micButton {
   background: transparent;
   color: #8b929a;
@@ -1514,6 +1547,8 @@ h1 {
 }
 
 .automationWorkspace {
+  width: min(960px, calc(100% - 38px));
+  align-self: center;
   display: grid;
   gap: 14px;
 }
@@ -1844,6 +1879,8 @@ h1 {
 }
 
 .statusPanel {
+  width: min(960px, calc(100% - 38px));
+  align-self: center;
   padding: 18px;
 }
 
@@ -2008,6 +2045,343 @@ h1 {
 
 .errorText {
   color: #c23b3b;
+}
+
+/* Team pipeline */
+.teamPipelinePanel {
+  width: min(860px, 100%);
+  border: 1px solid #e6e8eb;
+  border-radius: 8px;
+  padding: 14px;
+  display: grid;
+  gap: 14px;
+  background: #fff;
+}
+
+.teamPipelineHeader,
+.teamStageHeader,
+.teamAgentCard summary {
+  display: flex;
+  align-items: center;
+}
+
+.teamPipelineHeader {
+  gap: 10px;
+}
+
+.teamPipelineIcon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: #f1f3f5;
+  color: #4f5964;
+}
+
+.teamPipelineIcon.done {
+  color: #287a4d;
+}
+
+.teamPipelineHeader strong,
+.teamAgentCard strong {
+  display: block;
+  color: #1f2328;
+  font-size: 14px;
+}
+
+.teamPipelineHeader small,
+.teamStageHeader small,
+.teamAgentCard small {
+  color: #747b84;
+  font-size: 12px;
+}
+
+.deliverySpecPanel,
+.deliveryReviewPanel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #eceef1;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 12px;
+}
+
+.deliverySpecHeader {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.deliverySpecHeader strong {
+  display: block;
+  color: #1f2328;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.deliverySpecHeader small,
+.deliveryRepair small,
+.deliveryReview small {
+  color: #747b84;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.deliveryBadge {
+  min-width: 58px;
+  border: 1px solid #d7dee8;
+  border-radius: 7px;
+  background: #fff;
+  color: #4f5964;
+  padding: 4px 7px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.deliveryBadge.complex {
+  border-color: #f0c8c0;
+  background: #fff6f4;
+  color: #b84e3a;
+}
+
+.deliveryBadge.medium {
+  border-color: #d7cba4;
+  background: #fffaf0;
+  color: #8a6822;
+}
+
+.deliveryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.deliveryBlock {
+  min-width: 0;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+.deliveryBlock span,
+.deliveryChips > span,
+.deliveryRepair span {
+  display: block;
+  color: #4f5964;
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.deliveryBlock ul,
+.deliveryRisks ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #303741;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.deliveryMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: start;
+}
+
+.deliveryChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.deliveryChips > span {
+  margin: 0 2px 0 0;
+}
+
+.deliveryChips small {
+  border: 1px solid #dfe4ea;
+  border-radius: 999px;
+  background: #fff;
+  color: #4f5964;
+  padding: 3px 7px;
+  font-size: 11px;
+}
+
+.deliveryRisks {
+  color: #747b84;
+  font-size: 12px;
+}
+
+.deliveryRisks summary {
+  cursor: pointer;
+}
+
+.deliveryReview {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+.deliveryReviewIcon {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  background: #f1f3f5;
+  color: #4f5964;
+}
+
+.deliveryReview.passed .deliveryReviewIcon {
+  background: #edf7ee;
+  color: #287a4d;
+}
+
+.deliveryReview.failed .deliveryReviewIcon {
+  background: #fff6f4;
+  color: #b84e3a;
+}
+
+.deliveryReview strong {
+  color: #1f2328;
+  font-size: 13px;
+}
+
+.deliveryReview p {
+  margin-top: 3px;
+  color: #4f5964;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.deliveryRepair {
+  border-radius: 8px;
+  background: #f7f8fa;
+  padding: 9px 10px;
+}
+
+.teamStages,
+.teamAgents,
+.teamAgentBody,
+.teamToolEvents {
+  display: grid;
+  gap: 10px;
+}
+
+.teamStage {
+  display: grid;
+  gap: 8px;
+}
+
+.teamStageHeader {
+  justify-content: space-between;
+  color: #4f5964;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.teamAgentCard {
+  border: 1px solid #eceef1;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.teamAgentCard summary {
+  min-height: 42px;
+  gap: 9px;
+  padding: 0 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.teamAgentCard summary::-webkit-details-marker {
+  display: none;
+}
+
+.teamAgentCard summary svg:last-child {
+  margin-left: auto;
+  color: #7a828c;
+  transition: transform 160ms ease;
+}
+
+.teamAgentCard[open] summary svg:last-child {
+  transform: rotate(180deg);
+}
+
+.teamAgentStatus {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: #6b7280;
+  background: #fff;
+}
+
+.teamAgentCard.done .teamAgentStatus {
+  color: #287a4d;
+}
+
+.teamAgentCard.error .teamAgentStatus {
+  color: #c23b3b;
+}
+
+.teamAgentBody {
+  padding: 0 12px 12px;
+}
+
+.teamToolEvent {
+  display: grid;
+  gap: 6px;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+.teamToolEvent strong {
+  color: #4f5964;
+  font-size: 12px;
+}
+
+.teamToolEvent pre {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #1f2328;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.teamAgentSummary {
+  color: #1f2328;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.teamAgentSummary p,
+.teamAgentSummary ul,
+.teamAgentSummary ol {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.teamAgentEmpty {
+  margin: 0;
+  color: #7a828c;
+  font-size: 13px;
 }
 
 /* Tool call timeline */
@@ -2275,6 +2649,10 @@ h1 {
   }
 
   .statusGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .deliveryGrid {
     grid-template-columns: 1fr;
   }
 

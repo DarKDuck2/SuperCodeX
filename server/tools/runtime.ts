@@ -17,7 +17,30 @@ export async function runRegisteredTool(
     maxModelContentLength?: number;
   } = {}
 ): Promise<ToolRuntimeResult> {
-  const args = parseToolArguments(toolCall.function.arguments);
+  let args: Record<string, unknown>;
+  try {
+    args = parseToolArguments(toolCall.function.arguments);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown parse error";
+    const result: ToolResult = {
+      ok: false,
+      summary: `Tool argument error: ${message}`,
+      error: message
+    };
+    const now = new Date().toISOString();
+    return {
+      modelContent: formatToolResult(result, toolCall.function.name, options.sanitize, options.maxModelContentLength),
+      trace: {
+        id: toolCall.id,
+        toolName: toolCall.function.name,
+        args: {},
+        policy: { action: "deny", reason: message },
+        startedAt: now,
+        finishedAt: now,
+        result
+      }
+    };
+  }
   const policy = evaluateToolPolicy(tool, args);
   const trace: ToolTrace = {
     id: toolCall.id,
