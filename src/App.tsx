@@ -30,6 +30,7 @@ import {
   Sparkles,
   Table2,
   Trash2,
+  Target,
   X,
   Wrench,
   Workflow
@@ -714,6 +715,9 @@ function App() {
       (total, stage) => total + stage.agents.filter((agent) => agent.status === "done" || agent.status === "error").length,
       0
     );
+    const activeAgents = teamRun.stages.flatMap((stage) => stage.agents).filter((agent) => agent.status === "running").length;
+    const latestReview = teamRun.reviews[teamRun.reviews.length - 1];
+    const latestRepair = teamRun.repairs[teamRun.repairs.length - 1];
 
     return (
       <section className="teamPipelinePanel">
@@ -722,20 +726,119 @@ function App() {
             {teamRun.status === "done" ? <Check size={16} /> : <Workflow size={16} />}
           </span>
           <div>
-            <strong>{formatPipelineTemplate(teamRun.template)}</strong>
+            <strong>MetaX 集群 Loop</strong>
             <small>
-              {completedAgents}/{totalAgents} agents · {formatDeliveryModeLabel(teamRun.deliveryMode)} · {teamRun.status === "done" ? "done" : "running"}
+              Root Agent · {formatPipelineTemplate(teamRun.template)} · {formatDeliveryModeLabel(teamRun.deliveryMode)}
             </small>
+          </div>
+          <div className="teamPipelineStats">
+            <span>{completedAgents}/{totalAgents} 子 Agent</span>
+            <span>{activeAgents} 运行中</span>
+            <span>{teamRun.reviews.length} 次验收</span>
+          </div>
+        </div>
+        <div className="loopProgress">
+          {[
+            { label: "理解需求", done: Boolean(teamRun.spec), active: !teamRun.spec },
+            { label: "拆解子任务", done: teamRun.stages.length > 0, active: Boolean(teamRun.spec && !teamRun.stages.length) },
+            {
+              label: "Agent 执行",
+              done: totalAgents > 0 && completedAgents === totalAgents,
+              active: activeAgents > 0 || (teamRun.stages.length > 0 && completedAgents < totalAgents)
+            },
+            {
+              label: "验收迭代",
+              done: teamRun.status === "done" || Boolean(latestReview?.passed),
+              active: Boolean(latestReview && !latestReview.passed) || Boolean(latestRepair)
+            }
+          ].map((phase, index) => (
+            <div className={`loopProgressStep ${phase.done ? "done" : ""} ${phase.active ? "active" : ""}`} key={phase.label}>
+              <span>{index + 1}</span>
+              <strong>{phase.label}</strong>
+            </div>
+          ))}
+        </div>
+        <div className="agentMindMap">
+          <div className={`rootAgentNode ${teamRun.status}`}>
+            <div className="rootAgentTopline">
+              <span className="rootAgentIcon">
+                <Bot size={18} />
+              </span>
+              <div>
+                <strong>Root Agent</strong>
+                <small>{formatRootAgentState(teamRun, activeAgents)}</small>
+              </div>
+            </div>
+            <p>{teamRun.spec?.goal || "正在理解需求并准备拆解任务。"}</p>
+            <div className="rootAgentMeta">
+              <span>{teamRun.spec?.complexity || "planning"}</span>
+              <span>{teamRun.spec?.domains.join(" / ") || "general"}</span>
+              <span>max repair {teamRun.spec?.maxIterations ?? 0}</span>
+            </div>
+          </div>
+          <div className="mindMapBranches">
+            {teamRun.stages.map((stage, stageIndex) => (
+              <div className={`mindStageBranch ${stage.done ? "done" : ""}`} key={`${teamRun.pipelineId}-mind-${stageIndex}`}>
+                <div className="mindStageHeader">
+                  <span>{stage.name}</span>
+                  <small>{stage.parallel ? "parallel" : "sequential"}</small>
+                </div>
+                <div className="mindAgentList">
+                  {stage.agents.map((agent) => (
+                    <div className={`mindAgentNode ${agent.status}`} key={`${stageIndex}-${agent.role}-mind`}>
+                      <div className="mindAgentHeader">
+                        <span className="mindAgentIcon">{renderAgentIcon(agent.role, agent.status)}</span>
+                        <div>
+                          <strong>{agent.role}</strong>
+                          <small>{formatAgentStatus(agent)}</small>
+                        </div>
+                      </div>
+                      <p>{formatAgentTask(agent.role, stage.name, teamRun.spec)}</p>
+                      <div className="mindAgentMeta">
+                        <span>turn {agent.turn || 0}</span>
+                        <span>{agent.toolEvents.length} events</span>
+                        <span>{agent.toolCount} tools</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div className={`mindStageBranch reviewLoop ${latestReview?.passed ? "done" : latestReview ? "active" : ""}`}>
+              <div className="mindStageHeader">
+                <span>acceptance loop</span>
+                <small>{latestReview ? `round ${latestReview.iteration + 1}` : "waiting"}</small>
+              </div>
+              <div className="reviewLoopNode">
+                <div className="mindAgentHeader">
+                  <span className="mindAgentIcon">{latestReview?.passed ? <Check size={14} /> : <ShieldCheck size={14} />}</span>
+                  <div>
+                    <strong>ReviewAgent</strong>
+                    <small>{latestReview ? `${Math.round(latestReview.score * 100)}% · ${latestReview.passed ? "通过" : "需修复"}` : "等待执行结果"}</small>
+                  </div>
+                </div>
+                <p>{latestReview?.summary || "Root Agent 会把子 Agent 结果汇总后交给 ReviewAgent 验收。"}</p>
+                {latestRepair && !latestReview?.passed && (
+                  <div className="repairLoopChip">
+                    <RotateLabel />
+                    <span>第 {latestRepair.iteration} 轮修复：{latestRepair.roles.join(" / ")}</span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
         {teamRun.spec && (
           <div className="deliverySpecPanel">
             <div className="deliverySpecHeader">
-              <span className={`deliveryBadge ${teamRun.spec.complexity}`}>{teamRun.spec.complexity}</span>
+              <span className={`deliveryBadge ${teamRun.spec.complexity}`}>
+                <Target size={13} />
+                {teamRun.spec.complexity}
+              </span>
               <div>
-                <strong>{teamRun.spec.goal}</strong>
+                <strong>Root Agent 拆解结果</strong>
                 <small>
-                  {teamRun.spec.domains.join(" / ") || "general"} · max repair {teamRun.spec.maxIterations}
+                  {teamRun.spec.goal}
                 </small>
               </div>
             </div>
@@ -876,6 +979,44 @@ function App() {
   function formatTeamEventContent(value: string) {
     if (value.length <= 900) return value;
     return `${value.slice(0, 900).trimEnd()}\n[truncated]`;
+  }
+
+  function formatRootAgentState(run: TeamRunView, activeAgents: number) {
+    if (!run.spec) return "理解需求中";
+    if (!run.stages.length) return "拆解子任务中";
+    if (activeAgents > 0) return "调度子 Agent 执行";
+    if (run.reviews.some((review) => !review.passed)) return "组织自动修复";
+    if (run.status === "done") return "完成交付";
+    return "等待验收闭环";
+  }
+
+  function renderAgentIcon(role: string, status: TeamAgentView["status"]) {
+    if (status === "done") return <Check size={14} />;
+    if (status === "error") return <ShieldCheck size={14} />;
+    if (role === "CodeAgent") return <FileCode size={14} />;
+    if (role === "ResearchAgent") return <Search size={14} />;
+    if (role === "OfficeAgent") return <FileText size={14} />;
+    if (role === "ReviewAgent") return <ShieldCheck size={14} />;
+    return <Bot size={14} />;
+  }
+
+  function formatAgentStatus(agent: TeamAgentView) {
+    if (agent.status === "pending") return "等待 Root Agent 调度";
+    if (agent.status === "running") return `执行中 · turn ${agent.turn || 1}`;
+    if (agent.status === "error") return "需要 Root Agent 处理";
+    return "已回传结果";
+  }
+
+  function formatAgentTask(role: string, stageName: string, spec?: DeliverySpecView) {
+    if (role === "CodeAgent") return "负责实现、修复、重构和测试，并把代码类执行委派给 Claude Code。";
+    if (role === "ResearchAgent") return "负责检索、核验和补齐事实依据，向 Root Agent 回传证据与风险。";
+    if (role === "OfficeAgent") return "负责处理文档、表格、PPT、PDF、图片等办公产物。";
+    if (role === "ReviewAgent") return "负责根据验收标准审查结果，决定是否进入下一轮修复。";
+    return spec?.deliverables[0] || `执行 ${stageName} 阶段的子任务。`;
+  }
+
+  function RotateLabel() {
+    return <Wrench size={13} />;
   }
 
   function useSkillPrompt(title: string) {
