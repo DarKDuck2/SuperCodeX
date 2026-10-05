@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
 import { normalizeWhitespace, stripAnsi } from "../core/text.js";
+import { fetchPublicText } from "./public-fetch.js";
 import {
   compactJsonText,
   extractMetaDescription,
@@ -195,33 +196,20 @@ function domainFromUrl(url: string) {
 }
 
 async function fetchReadablePageExcerpt(url: string) {
-  if (!/^https?:\/\//i.test(url)) throw new Error("unsupported URL scheme");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "user-agent": "SuperCodex search verifier (+local research tool)"
-      }
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const contentType = response.headers.get("content-type") || "";
-    const text = await response.text();
-    if (contentType.includes("application/json")) {
-      return { excerpt: compactJsonText(text, 1800) };
-    }
-    if (!contentType.includes("text/html") && !looksLikeHtml(text)) {
-      return { excerpt: normalizeWhitespace(stripAnsi(text)).slice(0, 1800) };
-    }
-    const title = extractTagContent(text, "title");
-    const description = extractMetaDescription(text);
-    const excerpt = htmlToReadableText(text).slice(0, 2200);
-    if (!excerpt) throw new Error("no readable text extracted");
-    return { title, description, excerpt };
-  } finally {
-    clearTimeout(timeout);
+  const response = await fetchPublicText(url, { timeoutMs: 8_000, maxBytes: 250_000, userAgent: "SuperCodex search verifier (+local research tool)" });
+  const contentType = response.contentType;
+  const text = response.text;
+  if (contentType.includes("application/json")) {
+    return { excerpt: compactJsonText(text, 1800) };
   }
+  if (!contentType.includes("text/html") && !looksLikeHtml(text)) {
+    return { excerpt: normalizeWhitespace(stripAnsi(text)).slice(0, 1800) };
+  }
+  const title = extractTagContent(text, "title");
+  const description = extractMetaDescription(text);
+  const excerpt = htmlToReadableText(text).slice(0, 2200);
+  if (!excerpt) throw new Error("no readable text extracted");
+  return { title, description, excerpt };
 }
 
 function parseOpenWebSearchJson(output: string) {

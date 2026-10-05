@@ -35,11 +35,11 @@ export function createWebBridgeService() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, args: args || {}, session })
     });
-    const payload = (await response.json()) as { error?: string };
-    if (!response.ok) {
+    const payload = (await response.json()) as { ok?: boolean; data?: unknown; error?: string };
+    if (!response.ok || payload.ok === false) {
       throw new Error(payload?.error || `WebBridge command failed: ${response.status}`);
     }
-    return payload;
+    return payload.ok === true && "data" in payload ? payload.data : payload;
   }
   
   function summarizeWebBridgePayload(action: string, payload: unknown) {

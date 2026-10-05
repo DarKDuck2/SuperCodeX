@@ -1,4 +1,4 @@
-import { AlarmClock, Bot, Globe2, Grid3X3, PanelLeft, PenLine, Search } from "lucide-react";
+import { AlarmClock, Bell, Bot, Brain, CalendarDays, Globe2, Grid3X3, PanelLeft, PenLine, Search, Target } from "lucide-react";
 import type { ActiveView, ConversationSummary } from "../types";
 
 type HistoryItem = ConversationSummary & {
@@ -11,6 +11,8 @@ type SidebarProps = {
   historyItems: HistoryItem[];
   isCollapsed: boolean;
   unreadAutomationCount: number;
+  pendingApprovalCount: number;
+  unreadAttentionCount: number;
   onCreateTask: () => void;
   onLoadMessages: (conversationId: string) => void;
   onSelectView: (view: ActiveView) => void;
@@ -23,6 +25,8 @@ export function Sidebar({
   historyItems,
   isCollapsed,
   unreadAutomationCount,
+  pendingApprovalCount,
+  unreadAttentionCount,
   onCreateTask,
   onLoadMessages,
   onSelectView,
@@ -64,6 +68,24 @@ export function Sidebar({
           <PenLine size={19} />
           <span className="navText">新建任务</span>
           <kbd>⌘ K</kbd>
+        </button>
+        <button className={`navButton ${activeView === "goals" ? "active" : ""}`} type="button" onClick={() => onSelectView("goals")}>
+          <Target size={19} />
+          <span className="navText">长期目标与审批</span>
+          {pendingApprovalCount > 0 && <span className="navBadge">{pendingApprovalCount}</span>}
+        </button>
+        <button className={`navButton ${activeView === "attention" ? "active" : ""}`} type="button" onClick={() => onSelectView("attention")}>
+          <Bell size={19} />
+          <span className="navText">提醒</span>
+          {unreadAttentionCount > 0 && <span className="navBadge">{unreadAttentionCount}</span>}
+        </button>
+        <button className={`navButton ${activeView === "memory" ? "active" : ""}`} type="button" onClick={() => onSelectView("memory")}>
+          <Brain size={19} />
+          <span className="navText">个人记忆</span>
+        </button>
+        <button className={`navButton ${activeView === "calendar" ? "active" : ""}`} type="button" onClick={() => onSelectView("calendar")}>
+          <CalendarDays size={19} />
+          <span className="navText">日历连接</span>
         </button>
         <button className={`navButton ${activeView === "skills" ? "active" : ""}`} type="button" onClick={() => onSelectView("skills")}>
           <Grid3X3 size={19} />

@@ -6,15 +6,21 @@ import { inferAttachmentKind } from "../core/local-files.js";
 import { sanitizeFileName } from "../core/paths.js";
 import { normalizeWhitespace, titleFromPrompt } from "../core/text.js";
 import { builtinSkillCatalog } from "../skills/catalog.js";
+import { openSqliteState } from "./sqlite.js";
 import type { ToolRegistry } from "../tools/registry.js";
 import type { ToolContext } from "../tools/types.js";
 import type {
   ApiConfig,
+  AttentionState,
+  Approval,
   Attachment,
   Automation,
   ChatCompletionResponse,
   ChatMessage,
   Conversation,
+  Goal,
+  MemoryFact,
+  MemoryCandidate,
   Message,
   Project,
   ProjectTreeNode,
@@ -26,6 +32,7 @@ import type {
 
 type CreateStateServiceDependencies = {
   settings: Required<ApiConfig>;
+  attention: AttentionState;
   workspaceRoot: string;
   workspaceFilesDirName: string;
   dataDir: string;
@@ -35,6 +42,10 @@ type CreateStateServiceDependencies = {
   conversations: Map<string, Conversation>;
   skills: Map<string, Skill>;
   automations: Map<string, Automation>;
+  goals: Map<string, Goal>;
+  approvals: Map<string, Approval>;
+  memories: Map<string, MemoryFact>;
+  memoryCandidates: Map<string, MemoryCandidate>;
   attachments: Map<string, Attachment>;
   toolRegistry: ToolRegistry;
   maxContextToolChars: number;
@@ -50,6 +61,7 @@ type CreateStateServiceDependencies = {
 export function createStateService(deps: CreateStateServiceDependencies) {
   const {
     settings,
+    attention,
     workspaceRoot,
     workspaceFilesDirName,
     dataDir,
@@ -59,6 +71,10 @@ export function createStateService(deps: CreateStateServiceDependencies) {
     conversations,
     skills,
     automations,
+    goals,
+    approvals,
+    memories,
+    memoryCandidates,
     attachments,
     toolRegistry,
     maxContextToolChars,
@@ -70,11 +86,26 @@ export function createStateService(deps: CreateStateServiceDependencies) {
     id,
     now
   } = deps;
+  const secretFile = path.join(dataDir, "secrets.json");
+  const sqliteFile = path.join(dataDir, "state.sqlite");
+  let database: ReturnType<typeof openSqliteState> | undefined;
 
   async function initializeStore() {
-    try {
-      const raw = await fs.readFile(dataFile, "utf-8");
-      const store = JSON.parse(raw) as Store;
+    await fs.mkdir(dataDir, { recursive: true });
+    database = openSqliteState(sqliteFile);
+    let store = database.loadSnapshot();
+    if (!store) {
+      let raw: string | undefined;
+      try {
+        raw = await fs.readFile(dataFile, "utf-8");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      if (raw) store = JSON.parse(raw) as Store;
+    }
+    if (store) {
+      if (["off", "important", "all"].includes(store.attention?.mode || "")) attention.mode = store.attention!.mode;
+      if (Array.isArray(store.attention?.readIds)) attention.readIds = store.attention.readIds.filter((value): value is string => typeof value === "string").slice(0, 2000);
       if (typeof store.settings?.baseUrl === "string") settings.baseUrl = store.settings.baseUrl;
       if (typeof store.settings?.apiKey === "string") settings.apiKey = store.settings.apiKey;
       if (typeof store.settings?.model === "string") settings.model = store.settings.model;
@@ -82,37 +113,57 @@ export function createStateService(deps: CreateStateServiceDependencies) {
       store.conversations.forEach((conversation) => conversations.set(conversation.id, conversation));
       store.skills.forEach((skill) => skills.set(skill.id, skill));
       store.automations.forEach((automation) => automations.set(automation.id, automation));
+      store.goals?.forEach((goal) => goals.set(goal.id, goal));
+      store.approvals?.forEach((approval) => approvals.set(approval.id, approval));
+      store.memories?.forEach((memory) => memories.set(memory.id, memory));
+      store.memoryCandidates?.forEach((candidate) => memoryCandidates.set(candidate.id, candidate));
       store.attachments?.forEach((attachment) => attachments.set(attachment.id, attachment));
-      ensureSeedSkills();
-      migrateAttachments();
-      migrateConversationStorage();
-      migrateAutomations();
-      await persistStore();
-    } catch {
+    } else {
       seedState();
-      migrateAttachments();
-      migrateConversationStorage();
-      migrateAutomations();
-      await persistStore();
     }
+    try {
+      const secrets = JSON.parse(await fs.readFile(secretFile, "utf-8")) as { apiKey?: string };
+      if (typeof secrets.apiKey === "string") settings.apiKey = secrets.apiKey;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    ensureSeedSkills();
+    migrateAttachments();
+    migrateConversationStorage();
+    migrateAutomations();
+    await persistStore();
   }
   
-  async function persistStore() {
-    await fs.mkdir(dataDir, { recursive: true });
-    const store: Store = {
-      settings: {
-        baseUrl: settings.baseUrl,
-        apiKey: settings.apiKey,
-        model: settings.model
-      },
+  let pendingWrite: Promise<void> = Promise.resolve();
+
+  function persistStore() {
+    // Freeze the requested state before this write waits behind earlier exports.
+    // Otherwise later in-memory mutations can enter a checkpoint that already returned to its caller.
+    const snapshot = JSON.parse(JSON.stringify({
+      settings: { baseUrl: settings.baseUrl, model: settings.model },
+      attention: { mode: attention.mode, readIds: attention.readIds },
       projects: [...projects.values()],
       conversations: [...conversations.values()],
       skills: [...skills.values()],
       automations: [...automations.values()],
+      goals: [...goals.values()],
+      approvals: [...approvals.values()],
+      memories: [...memories.values()],
+      memoryCandidates: [...memoryCandidates.values()],
       attachments: [...attachments.values()]
-    };
-    await fs.writeFile(dataFile, JSON.stringify(store, null, 2), "utf-8");
-    await persistConversationFiles();
+    })) as Store;
+    const secretJson = JSON.stringify({ apiKey: settings.apiKey });
+    pendingWrite = pendingWrite.catch(() => undefined).then(() => writeStore(snapshot, secretJson));
+    return pendingWrite;
+  }
+
+  async function writeStore(store: Store, secretJson: string) {
+    if (!database) throw new Error("State database is not initialized");
+    const temporarySecretFile = `${secretFile}.tmp`;
+    await fs.writeFile(temporarySecretFile, secretJson, { encoding: "utf-8", mode: 0o600 });
+    await fs.rename(temporarySecretFile, secretFile);
+    database.replaceSnapshot(store);
+    await persistConversationFiles().catch((error) => console.error("Conversation export failed", error));
   }
   
   function migrateConversationStorage() {
@@ -493,6 +544,10 @@ export function createStateService(deps: CreateStateServiceDependencies) {
       })),
       skills: [...skills.values()],
       automations: [...automations.values()],
+      goals: [...goals.values()],
+      approvals: [...approvals.values()],
+      memories: [...memories.values()],
+      memoryCandidates: [...memoryCandidates.values()],
       tools: toolRegistry.names()
     };
   }
@@ -577,6 +632,7 @@ export function createStateService(deps: CreateStateServiceDependencies) {
   return {
     initializeStore,
     persistStore,
+    closeStore: () => database?.close(),
     conversationFolderName,
     summarizeConversation,
     latestUserPrompt,

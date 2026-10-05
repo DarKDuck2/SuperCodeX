@@ -23,6 +23,7 @@ const spreadsheetTaskPattern = /excel|表格|数据|csv|xlsx|xls|sheet|spreadshe
 const documentTaskPattern = /docx|word|文档|报告|润色|写作|document/i;
 const presentationTaskPattern = /ppt|pptx|幻灯片|演示|deck|slides|presentation/i;
 const claudeCodeTaskPattern = /代码|bug|修复|实现|改动|重构|开发|仓库|repo|code|coding|refactor|bug|fix|implement/i;
+const calendarTaskPattern = /日历|日程|会议|约会|空闲时间|calendar|schedule|meeting|appointment/i;
 
 export type TaskClassificationInput = {
   prompt: string;
@@ -118,6 +119,7 @@ export function selectToolsForTask(
     if (alwaysAvailable.has(name)) return true;
     if (name === "run_command") return classification.needsShell;
     if (name === "delegate_to_claude_code") return classification.needsClaudeCode;
+    if (name === "list_calendar_events") return calendarTaskPattern.test(classification.selectorText);
     if (name === "fetch_url" || name === "search_web") return classification.needsWeb;
     if (name === "transform_image") return classification.needsImages;
     if (name === "webbridge_status" || name === "webbridge_command") return classification.needsBrowser;

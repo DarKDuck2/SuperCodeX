@@ -97,14 +97,165 @@ export type Automation = {
   runs?: AutomationRun[];
 };
 
+export type GoalTask = {
+  id: string;
+  title: string;
+  instruction: string;
+  status: "planned" | "queued" | "running" | "completed" | "failed" | "interrupted";
+  createdAt: string;
+  updatedAt: string;
+  result?: string;
+  error?: string;
+  runCount: number;
+  schedule?: string;
+  nextRunAt?: string;
+  fileTrigger?: { path: string; signature: string };
+  githubReleaseTrigger?: { repo: string; seenIds: number[]; nextCheckAt: string; lastCheckedAt?: string; lastError?: string };
+  calendarEventTrigger?: { since: string; seenVersions: string[]; nextCheckAt: string; lastCheckedAt?: string; lastError?: string };
+  sourceSuggestionId?: string;
+};
+
+export type GoalSuggestion = {
+  id: string;
+  title: string;
+  instruction: string;
+  reason: string;
+  status: "pending" | "accepted" | "dismissed";
+  taskId?: string;
+};
+
+export type GoalReview = {
+  id: string;
+  taskId: string;
+  runCount: number;
+  summary: string;
+  suggestions: GoalSuggestion[];
+  createdAt: string;
+};
+
+export type GoalArtifactVersion = {
+  revision: number;
+  title: string;
+  content: string;
+  updatedAt: string;
+  updatedBy: "user" | "agent";
+  restoredFromRevision?: number;
+};
+
+export type GoalArtifact = GoalArtifactVersion & {
+  id: string;
+  createdAt: string;
+  history?: GoalArtifactVersion[];
+};
+
+export type GoalFileVersion = {
+  revision: number;
+  title: string;
+  size: number;
+  taskId: string;
+  toolName: string;
+  updatedAt: string;
+  snapshotSha256: string;
+};
+
+export type GoalFile = {
+  id: string;
+  title: string;
+  path: string;
+  kind: "image" | "file" | "code" | "presentation" | "table";
+  size: number;
+  taskId: string;
+  toolName: string;
+  createdAt: string;
+  updatedAt: string;
+  revision?: number;
+  snapshotSha256?: string;
+  history?: GoalFileVersion[];
+};
+
+export type Goal = {
+  id: string;
+  projectId: string;
+  conversationId: string;
+  title: string;
+  description: string;
+  status: "active" | "paused" | "completed";
+  createdAt: string;
+  updatedAt: string;
+  planRevision?: number;
+  tasks: GoalTask[];
+  activity: Array<{ id: string; taskId?: string; kind: string; text: string; createdAt: string }>;
+  reviews?: GoalReview[];
+  artifacts?: GoalArtifact[];
+  files?: GoalFile[];
+};
+
+export type Approval = {
+  id: string;
+  goalId?: string;
+  taskId?: string;
+  conversationId?: string;
+  automationId?: string;
+  toolName: string;
+  riskLevel: string;
+  summary: string;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  createdAt: string;
+  decidedAt?: string;
+};
+
+export type MemoryFact = {
+  id: string;
+  content: string;
+  scope: "personal" | "goal";
+  useMode?: "relevant" | "always" | "private";
+  goalId?: string;
+  sourceConversationId?: string;
+  sourceMessageId?: string;
+  sourceQuote?: string;
+  confidence?: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MemoryCandidate = {
+  id: string;
+  content: string;
+  sourceConversationId: string;
+  sourceMessageId: string;
+  sourceQuote: string;
+  confidence: number;
+  status: "pending" | "accepted" | "dismissed";
+  createdAt: string;
+};
+
+export type AttentionItem = {
+  id: string;
+  kind: "approval" | "goal" | "review" | "automation";
+  priority: "important" | "normal";
+  title: string;
+  summary: string;
+  createdAt: string;
+  read: boolean;
+  goalId?: string;
+  automationId?: string;
+  approvalId?: string;
+};
+
+export type AttentionSnapshot = { mode: "off" | "important" | "all"; items: AttentionItem[]; unreadAlertCount: number };
+
 export type AppState = {
   settings: ApiSettings & { configured?: boolean };
   projects: Project[];
   skills: Skill[];
   automations: Automation[];
+  goals: Goal[];
+  approvals: Approval[];
+  memories: MemoryFact[];
+  memoryCandidates: MemoryCandidate[];
 };
 
-export type ActiveView = "home" | "skills" | "automations" | "search" | "webbridge";
+export type ActiveView = "home" | "goals" | "attention" | "memory" | "calendar" | "skills" | "automations" | "search" | "webbridge";
 
 export type AutomationPreview = {
   title: string;

@@ -3002,3 +3002,148 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+.goalsWorkspace { width: min(1120px, 100%); margin: 0 auto; padding: 8px 24px 48px; color: var(--text-primary, #e9e9ed); }
+.goalsIntro { display: flex; gap: 14px; align-items: flex-start; padding: 18px 20px; border: 1px solid #393c48; border-radius: 16px; background: #20222b; }
+.goalsIntro strong { font-size: 17px; }
+.goalsIntro p { margin: 5px 0 0; color: #aeb2c0; line-height: 1.5; }
+.goalApprovals { margin-top: 14px; padding: 14px; border: 1px solid #a67b45; border-radius: 13px; background: #30291f; }
+.goalApprovals h2 { margin: 0 0 10px; font-size: 15px; }
+.goalApprovals article { display: grid; gap: 8px; padding: 10px 0; border-top: 1px solid #5f4d39; }
+.goalApprovals code { display: block; max-height: 150px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: #e9dac5; font-size: 12px; }
+.goalApprovals article > div { display: flex; gap: 8px; }
+.goalApprovals button { border: 1px solid #a48a6c; border-radius: 8px; padding: 6px 10px; background: #46392c; color: #fff; cursor: pointer; }
+.approvalBanner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 20px 0; padding: 10px 12px; border: 1px solid #a67b45; border-radius: 10px; background: #30291f; color: #f4dfc1; font-size: 13px; }
+.approvalBanner button { border: 1px solid #a48a6c; border-radius: 8px; padding: 6px 10px; background: #46392c; color: #fff; white-space: nowrap; cursor: pointer; }
+.memoryWorkspace { width: min(850px, 100%); margin: 0 auto; padding: 8px 24px 48px; color: #e9e9ed; }
+.memoryList { display: grid; gap: 10px; }
+.memoryList article { padding: 14px; border: 1px solid #393c48; border-radius: 11px; background: #22242d; }
+.memoryList small { color: #9ba0b1; }
+.memoryList p { white-space: pre-wrap; line-height: 1.5; }
+.memoryList textarea { width: 100%; box-sizing: border-box; border: 1px solid #515562; border-radius: 8px; background: #1a1c24; color: #fff; padding: 9px; font: inherit; }
+.memoryList article > div { display: flex; gap: 8px; }
+.memoryList button { border: 1px solid #515562; border-radius: 8px; padding: 6px 10px; background: #303440; color: #fff; cursor: pointer; }
+.memoryList h3 { margin: 24px 0 2px; font-size: 15px; }
+.memoryList blockquote { margin: 8px 0 12px; padding-left: 10px; border-left: 2px solid #68758f; color: #aab4c7; white-space: pre-wrap; }
+.attentionWorkspace { width: min(850px, 100%); margin: 0 auto; padding: 8px 24px 48px; color: #e9e9ed; }
+.attentionControls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 16px 0; }
+.attentionControls label { display: flex; align-items: center; gap: 8px; }
+.attentionControls select, .attentionControls button, .attentionList button { border: 1px solid #515562; border-radius: 8px; padding: 7px 10px; background: #303440; color: #fff; cursor: pointer; }
+.attentionControls small, .attentionList small { color: #aab0bf; }
+.attentionList { display: grid; gap: 10px; }
+.attentionList article { padding: 14px; border: 1px solid #414450; border-radius: 11px; background: #22242d; }
+.attentionList article.read { opacity: .65; }
+.attentionList article > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.attentionList article > div:last-child { justify-content: flex-start; }
+.attentionList p { margin: 10px 0; line-height: 1.5; white-space: pre-wrap; }
+.goalCreateForm, .goalTaskForm { display: grid; gap: 10px; margin: 16px 0 24px; }
+.goalCreateForm input, .goalCreateForm textarea, .goalCreateForm select, .goalTaskForm input, .goalTaskForm textarea { width: 100%; box-sizing: border-box; border: 1px solid #414450; border-radius: 10px; background: #20222b; color: #f2f2f4; padding: 10px 12px; font: inherit; }
+.goalCreateForm textarea, .goalTaskForm textarea { resize: vertical; }
+.goalTaskForm .goalTriggerCheckbox { display: flex; align-items: center; gap: 9px; color: #c4c8d2; font-size: 13px; }
+.goalTaskForm .goalTriggerCheckbox input { width: auto; margin: 0; }
+.goalFormFooter { display: flex; justify-content: space-between; gap: 10px; }
+.goalFormFooter select { max-width: 260px; }
+.goalCreateForm button, .goalTaskForm button, .goalActions button, .goalSectionHead button, .goalTask button { display: inline-flex; align-items: center; gap: 6px; width: fit-content; border: 1px solid #515562; border-radius: 9px; background: #303440; color: #f4f4f6; padding: 8px 11px; font: inherit; cursor: pointer; }
+.goalCreateForm button:disabled, .goalTaskForm button:disabled, .goalSectionHead button:disabled { opacity: .5; cursor: default; }
+.goalsColumns { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 22px; }
+.goalList h2, .goalDetail h2 { font-size: 18px; margin: 0 0 12px; }
+.goalListItem { display: grid; gap: 7px; width: 100%; margin: 0 0 7px; padding: 12px; text-align: left; border: 1px solid #383b48; border-radius: 11px; background: #20222b; color: #f3f3f5; cursor: pointer; }
+.goalListItem.selected { border-color: #8c88e5; background: #292838; }
+.goalListItem small { color: #adb0bc; }
+.goalDetail { min-width: 0; padding: 18px; border: 1px solid #393c48; border-radius: 16px; background: #1e2028; }
+.goalDetailHead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.goalDetailHead p { margin: 0; white-space: pre-wrap; color: #b8bac6; }
+.goalActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.goalSectionHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 22px 0 10px; }
+.goalSectionHead h3 { margin: 0; font-size: 15px; }
+.goalSectionHead small { color: #aeb4c4; font-size: 11px; text-align: right; }
+.goalOrderHint { margin: -2px 0 12px; color: #aeb4c4; font-size: 12px; }
+.goalTasks { display: grid; gap: 9px; }
+.goalTask { padding: 13px; border: 1px solid #383b48; border-radius: 11px; background: #242630; }
+.goalTaskTop { display: flex; justify-content: space-between; gap: 12px; }
+.goalTaskOrder { display: flex; align-items: flex-start; gap: 5px; }
+.goalTaskOrder button { display: inline-flex; align-items: center; justify-content: center; min-width: 25px; min-height: 25px; padding: 3px; border: 1px solid #515562; border-radius: 7px; background: #303440; color: #f4f4f6; cursor: pointer; }
+.goalTaskOrder button:disabled { opacity: .35; cursor: default; }
+.goalTask p { white-space: pre-wrap; line-height: 1.5; color: #bcc0cb; }
+.goalTaskStatus { color: #b7bbca; white-space: nowrap; font-size: 12px; }
+.goalTaskStatus.completed { color: #84d7ac; }
+.goalTaskStatus.running { color: #e8c47c; }
+.goalTaskStatus.failed, .goalTaskStatus.interrupted, .goalTaskError { color: #ee9999 !important; }
+.goalTaskResult { max-height: 150px; overflow: auto; border-left: 2px solid #81c6a3; padding-left: 10px; }
+.goalTaskEdit { display: grid; gap: 8px; margin: 10px 0; }
+.goalTaskEdit input, .goalTaskEdit textarea { width: 100%; box-sizing: border-box; border: 1px solid #515562; border-radius: 8px; background: #20222b; color: #f2f2f4; padding: 9px 11px; font: inherit; }
+.goalTaskEdit div { display: flex; gap: 8px; }
+.goalReviews { display: grid; gap: 10px; margin: 10px 0 22px; }
+.goalReview { padding: 13px; border: 1px solid #414450; border-radius: 11px; background: #262934; }
+.goalReview > p { margin: 9px 0 12px; white-space: pre-wrap; line-height: 1.5; }
+.goalReview small, .goalSuggestion small { color: #aeb4c4; }
+.goalSuggestion { display: grid; gap: 5px; margin-top: 8px; padding: 10px; border: 1px solid #465065; border-radius: 9px; background: #222630; }
+.goalSuggestion p { margin: 0; white-space: pre-wrap; line-height: 1.5; }
+.goalSuggestion > div { display: flex; gap: 8px; margin-top: 4px; }
+.goalSuggestion button { border: 1px solid #515562; border-radius: 8px; background: #303440; color: #f4f4f6; padding: 6px 10px; font: inherit; cursor: pointer; }
+.goalSuggestion button:disabled { opacity: .5; cursor: default; }
+.goalArtifactWorkspace { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 12px; margin: 10px 0 22px; }
+.goalArtifactList { display: grid; align-content: start; gap: 6px; }
+.goalArtifactList > button { display: flex; align-items: flex-start; gap: 8px; width: 100%; padding: 10px; border: 1px solid #414450; border-radius: 9px; background: #252833; color: #f2f2f4; text-align: left; cursor: pointer; }
+.goalArtifactList > button.selected { border-color: #8c88e5; background: #302e42; }
+.goalArtifactList span { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.goalArtifactList small, .goalArtifactFooter small { color: #aeb4c4; font-size: 11px; }
+.goalArtifactEditor { display: grid; gap: 9px; min-width: 0; padding: 12px; border: 1px solid #414450; border-radius: 10px; background: #242630; }
+.goalArtifactEditorHead, .goalArtifactFooter { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.goalArtifactEditorHead > div { display: flex; gap: 6px; }
+.goalArtifactEditor input, .goalArtifactEditor textarea { width: 100%; box-sizing: border-box; border: 1px solid #515562; border-radius: 8px; background: #1d2029; color: #f2f2f4; padding: 9px 11px; font: inherit; }
+.goalArtifactEditor textarea { resize: vertical; line-height: 1.5; }
+.goalArtifactEditor button { border: 1px solid #515562; border-radius: 8px; background: #303440; color: #f4f4f6; padding: 6px 10px; font: inherit; cursor: pointer; }
+.goalArtifactEditor button:disabled { opacity: .5; cursor: default; }
+.goalArtifactPreview { min-height: 180px; max-height: 480px; overflow: auto; padding: 12px; border-radius: 8px; background: #1d2029; }
+.goalArtifactPreview h4 { margin: 0 0 12px; }
+.goalArtifactPreview p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+.goalArtifactEditor .goalTaskError { margin: 0; font-size: 12px; }
+.goalArtifactHistory { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid #414450; }
+.goalArtifactHistoryHead, .goalArtifactHistoricalPreview > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.goalArtifactHistoryHead small, .goalArtifactHistory > small { color: #aeb4c4; font-size: 11px; }
+.goalArtifactHistoryList { display: flex; gap: 6px; flex-wrap: wrap; max-height: 120px; overflow: auto; }
+.goalArtifactHistoryList button { font-size: 11px; text-align: left; }
+.goalArtifactHistoryList button.selected { border-color: #8c88e5; background: #45405f; }
+.goalArtifactHistoricalPreview { display: grid; gap: 10px; min-width: 0; padding: 12px; border-radius: 8px; background: #1d2029; }
+.goalArtifactHistoricalPreview strong { overflow-wrap: anywhere; }
+.goalArtifactHistoricalPreview > small { color: #aeb4c4; }
+.goalArtifactHistoricalPreview p { margin: 0; max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+.goalArtifactDiff { max-height: 300px; overflow: auto; border: 1px solid #414450; border-radius: 7px; font-size: 12px; }
+.goalArtifactDiffLine { display: flex; min-height: 21px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.goalArtifactDiffLine span { flex: 0 0 24px; text-align: center; user-select: none; }
+.goalArtifactDiffLine code { padding: 2px 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.goalArtifactDiffLine.added { background: #213b32; color: #bbebd3; }
+.goalArtifactDiffLine.removed { background: #483031; color: #ffd1cf; }
+.goalArtifactSideBySide { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.goalArtifactSideBySide > div { min-width: 0; padding: 8px; border: 1px solid #414450; border-radius: 7px; }
+.goalFileList { display: grid; gap: 7px; margin: 10px 0 22px; }
+.goalFileEntry { display: grid; gap: 5px; }
+.goalFileItem { display: flex; align-items: flex-start; gap: 9px; padding: 10px; border: 1px solid #414450; border-radius: 9px; background: #252833; color: #f2f2f4; text-decoration: none; }
+.goalFileItem:hover { border-color: #8c88e5; }
+.goalFileItem span { display: grid; gap: 4px; min-width: 0; }
+.goalFileItem strong, .goalFileItem small { overflow-wrap: anywhere; }
+.goalFileItem small { color: #aeb4c4; font-size: 11px; }
+.goalFileVersions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 8px 5px 35px; font-size: 11px; }
+.goalFileVersions small { color: #aeb4c4; }
+.goalFileVersions a { color: #b9b6ff; }
+@media (max-width: 600px) { .goalArtifactSideBySide { grid-template-columns: 1fr; } .goalArtifactHistoryHead { align-items: flex-start; flex-direction: column; } }
+.goalActivity { display: grid; gap: 8px; }
+.goalActivity > div { display: flex; align-items: baseline; gap: 8px; color: #b8bbc7; font-size: 13px; }
+.goalActivity time { margin-left: auto; white-space: nowrap; color: #8e93a0; }
+@media (max-width: 800px) { .goalsColumns, .goalArtifactWorkspace { grid-template-columns: 1fr; } .goalDetailHead { display: block; } .goalActions { justify-content: flex-start; margin-top: 12px; } .goalsWorkspace { padding: 8px 12px 32px; } }
+.calendarWorkspace { width: min(850px, 100%); margin: 0 auto; padding: 8px 24px 48px; color: #e9e9ed; }
+.calendarConnectForm { display: grid; gap: 12px; margin: 18px 0 10px; }
+.calendarConnectForm label { display: grid; gap: 6px; color: #c3c7d1; font-size: 13px; }
+.calendarConnectForm input { width: 100%; box-sizing: border-box; border: 1px solid #414450; border-radius: 9px; background: #20222b; color: #f2f2f4; padding: 10px 12px; font: inherit; }
+.calendarConnectForm button, .calendarActions button { display: inline-flex; align-items: center; gap: 6px; width: fit-content; border: 1px solid #515562; border-radius: 9px; background: #303440; color: #f4f4f6; padding: 8px 11px; font: inherit; cursor: pointer; }
+.calendarConnectForm button:disabled, .calendarActions button:disabled { opacity: .5; cursor: default; }
+.calendarHint { color: #aeb4c4; font-size: 13px; line-height: 1.6; }
+.calendarActions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 18px 0; }
+.calendarActions span { margin-right: auto; color: #b6dfc8; }
+.calendarError { padding: 10px 12px; border-radius: 9px; background: #422b2b; color: #ffcccc; }
+.calendarEvents { display: grid; gap: 9px; margin-top: 26px; }
+.calendarEvents h3 { margin: 0 0 4px; font-size: 16px; }
+.calendarEvents article { display: grid; gap: 5px; padding: 13px; border: 1px solid #414450; border-radius: 11px; background: #22242d; }
+.calendarEvents article span { color: #b7bbc8; font-size: 13px; overflow-wrap: anywhere; }
+.calendarEvents article a { display: inline-flex; align-items: center; gap: 4px; width: fit-content; color: #a8b8ff; font-size: 13px; }
+@media (max-width: 800px) { .calendarWorkspace { padding: 8px 12px 32px; } }

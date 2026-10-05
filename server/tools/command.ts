@@ -74,12 +74,22 @@ export async function executeStructuredCommand(
   const result = await execFileAsync(command.executable, command.args, {
     cwd: options.cwd,
     timeout: options.timeout,
-    maxBuffer: options.maxBuffer
+    maxBuffer: options.maxBuffer,
+    env: sanitizedChildEnvironment()
   });
   return {
     stdout: result.stdout,
     stderr: result.stderr
   };
+}
+
+export function sanitizedChildEnvironment(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const result: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(source)) {
+    if (/(?:key|token|secret|password|passwd|credential|auth|askpass|session|cookie)/i.test(name)) continue;
+    result[name] = value;
+  }
+  return result;
 }
 
 export function assertStructuredCommandAllowed(command: StructuredCommand) {

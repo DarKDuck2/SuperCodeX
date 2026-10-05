@@ -56,6 +56,7 @@ type CreateAgentRuntimeDependencies = {
   };
   formatAttachmentContext: (items: ToolContext["attachments"]) => string;
   formatSkillContext: () => string;
+  getMemoryContext: (conversation: Conversation) => string;
   summarizeConversation: (conversation: Conversation) => string;
   toChatMessage: (message: StoredMessage, options?: { compact?: boolean }) => ChatMessage;
   persistStore: () => Promise<void>;
@@ -113,6 +114,7 @@ export function createAgentRuntime(deps: CreateAgentRuntimeDependencies) {
     getActiveSkillSelection,
     formatAttachmentContext,
     formatSkillContext,
+    getMemoryContext,
     summarizeConversation,
     toChatMessage,
     persistStore,
@@ -156,7 +158,8 @@ export function createAgentRuntime(deps: CreateAgentRuntimeDependencies) {
         "extract_pdf_text",
         "read_spreadsheet",
         "extract_docx_text",
-        "inspect_presentation"
+        "inspect_presentation",
+        "list_calendar_events"
       ],
       maxTurns: Math.min(maxAgentTurns, 15)
     },
@@ -186,6 +189,7 @@ export function createAgentRuntime(deps: CreateAgentRuntimeDependencies) {
         "transform_image",
         "read_file",
         "write_file",
+        "list_calendar_events",
         "list_attachments",
         "read_attachment"
       ],
@@ -204,7 +208,7 @@ export function createAgentRuntime(deps: CreateAgentRuntimeDependencies) {
     if (mode === "team") {
       return runTeamPipeline(conversation, config, onEvent, signal, options);
     }
-    return runStandardAgentLoop(conversation, config, onEvent, signal, mode);
+    return runStandardAgentLoop(conversation, config, onEvent, signal, mode, options);
   }
 
   async function runTeamPipeline(
@@ -214,7 +218,7 @@ export function createAgentRuntime(deps: CreateAgentRuntimeDependencies) {
     signal?: AbortSignal,
     options: AgentRunOptions = {}
   ): Promise<AgentResult> {
-    const session = await createAgentRunSession(conversation, config, onEvent, signal, "team");
+    const session = await createAgentRunSession(conversation, config, onEvent, signal, "team", options);
     const taskSpec = generateTaskSpec({
       prompt: latestUserPrompt(conversation),
       context: session.context,
@@ -763,6 +767,8 @@ export function createAgentRuntime(deps: CreateAgentRuntimeDependencies) {
       { role: "system", content: formatSkillContext() }
     ];
 
+    messages.push({ role: "system", content: getMemoryContext(conversation) });
+
     if (deliveryContext) {
       messages.push(
         { role: "system", content: formatTaskSpec(deliveryContext.taskSpec) },
@@ -843,9 +849,10 @@ export function createAgentRuntime(deps: CreateAgentRuntimeDependencies) {
     config?: ApiConfig,
     onEvent?: (event: AgentEvent) => void,
     signal?: AbortSignal,
-    mode: AgentRunMode = "agent"
+    mode: AgentRunMode = "agent",
+    options: AgentRunOptions = {}
   ): Promise<AgentResult> {
-    const session = await createAgentRunSession(conversation, config, onEvent, signal, mode);
+    const session = await createAgentRunSession(conversation, config, onEvent, signal, mode, options);
   
     for (let turns = 1; turns <= maxAgentTurns; turns++) {
       const turnResult = await runAgentTurn(session, turns);
@@ -863,14 +870,26 @@ export function createAgentRuntime(deps: CreateAgentRuntimeDependencies) {
     config?: ApiConfig,
     onEvent?: (event: AgentEvent) => void,
     signal?: AbortSignal,
-    mode: AgentRunMode = "agent"
+    mode: AgentRunMode = "agent",
+    options: AgentRunOptions = {}
   ): Promise<AgentRunSession> {
     const project = projects.get(conversation.projectId);
     const context: ToolContext = {
+      goalId: options.goalId,
       workspacePath: project?.rootPath || workspaceRoot,
       outputPath: path.join(project?.rootPath || workspaceRoot, workspaceFilesDirName),
       attachments: getConversationAttachments(conversation.id)
     };
+    context.signal = signal;
+    if (options.authorizeTool) {
+      context.authorizeTool = (toolName, riskLevel, args) => options.authorizeTool!({ toolName, riskLevel, args, signal });
+    }
+    if (options.beforeToolExecute) {
+      context.beforeToolExecute = (toolName, riskLevel, args) => options.beforeToolExecute!({ toolName, riskLevel, args });
+    }
+    if (options.afterToolExecute) {
+      context.afterToolExecute = (toolName, riskLevel, args, result, toolCallId) => options.afterToolExecute!({ toolName, riskLevel, args, result, toolCallId });
+    }
     await fs.mkdir(context.outputPath, { recursive: true });
     const outputRelativePath = path.relative(context.workspacePath, context.outputPath) || ".";
     return {
@@ -933,7 +952,7 @@ export function createAgentRuntime(deps: CreateAgentRuntimeDependencies) {
   }
 
   function selectToolDefinitionsForSession(session: AgentRunSession) {
-    return ensureModeToolDefinitions(
+    const definitions = ensureModeToolDefinitions(
       selectToolsForTask(toolRegistry.list(), {
         prompt: latestUserPrompt(session.conversation),
         context: session.context,
@@ -941,6 +960,13 @@ export function createAgentRuntime(deps: CreateAgentRuntimeDependencies) {
       }).map((tool) => tool.definition),
       session.mode
     );
+    if (session.context.goalId) {
+      for (const name of ["read_goal_artifact", "save_goal_artifact"]) {
+        const tool = toolRegistry.get(name);
+        if (tool && !definitions.some((item) => item.function.name === name)) definitions.push(tool.definition);
+      }
+    }
+    return definitions;
   }
 
   function appendAssistantToolCallMessage(
@@ -1165,6 +1191,10 @@ export function createAgentRuntime(deps: CreateAgentRuntimeDependencies) {
       {
         role: "system",
         content: formatSkillContext()
+      },
+      {
+        role: "system",
+        content: getMemoryContext(conversation)
       }
     ];
   
@@ -1304,7 +1334,11 @@ export function createAgentRuntime(deps: CreateAgentRuntimeDependencies) {
     }
     return runRegisteredTool(toolCall, tool, context, {
       sanitize: sanitizeToolResult,
-      maxModelContentLength: maxToolResultChars
+      maxModelContentLength: maxToolResultChars,
+      authorizeTool: context.authorizeTool,
+      beforeToolExecute: context.beforeToolExecute,
+      afterToolExecute: context.afterToolExecute,
+      signal: context.signal
     });
   }
   

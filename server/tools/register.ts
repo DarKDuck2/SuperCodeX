@@ -26,12 +26,14 @@ import {
   normalizeImageFormat,
   snapshotGeneratedFiles
 } from "../core/local-files.js";
-import { safeResolvePath, sanitizeFileName } from "../core/paths.js";
+import { sanitizeFileName } from "../core/paths.js";
+import { isProtectedAgentPath, resolveAgentReadPath, resolveAgentWritePath } from "../core/agent-paths.js";
 import { normalizeWhitespace, stripAnsi } from "../core/text.js";
-import { executeStructuredCommand, normalizeCommandInput } from "./command.js";
+import { executeStructuredCommand, normalizeCommandInput, sanitizedChildEnvironment } from "./command.js";
 import type { ToolRegistry } from "./registry.js";
 import type { ToolContext, ToolDefinition, ToolHandler, ToolMetadata } from "./types.js";
 import { compactJsonText, formatFetchedPage, htmlToReadableText, looksLikeHtml } from "../web/readability.js";
+import { fetchPublicText } from "../web/public-fetch.js";
 import {
   attachFetchedExcerpts,
   openWebSearch,
@@ -40,6 +42,7 @@ import {
   rankWebSearchResults
 } from "../web/search.js";
 import type { Attachment, Skill } from "../domain/types.js";
+import { performApprovedWebInteraction } from "../webbridge/interaction.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -167,9 +170,11 @@ export function registerServerTools(deps: RegisterServerToolsDependencies) {
       timeoutMs: 10_000
     },
     async (args, context) => {
-      const dirPath = safeResolvePath(String(args.path || "."), context.workspacePath);
+      const dirPath = await resolveAgentReadPath(String(args.path || "."), context.workspacePath);
       const entries = await fs.readdir(dirPath, { withFileTypes: true });
-      return entries.map((entry) => `${entry.isDirectory() ? "[dir]" : "[file]"} ${entry.name}`).join("\n");
+      return entries
+        .filter((entry) => !isProtectedAgentPath(path.relative(context.workspacePath, path.join(dirPath, entry.name))))
+        .map((entry) => `${entry.isDirectory() ? "[dir]" : "[file]"} ${entry.name}`).join("\n");
     }
   );
 
@@ -195,7 +200,7 @@ export function registerServerTools(deps: RegisterServerToolsDependencies) {
       timeoutMs: 10_000
     },
     async (args, context) => {
-      const filePath = safeResolvePath(String(args.path || ""), context.workspacePath);
+      const filePath = await resolveAgentReadPath(String(args.path || ""), context.workspacePath);
       const limit = Math.max(1, Math.min(Number(args.limit) || 200, 1000));
       const content = await fs.readFile(filePath, "utf-8");
       const lines = content.split("\n");
@@ -229,10 +234,11 @@ export function registerServerTools(deps: RegisterServerToolsDependencies) {
       skillIds: ["files", "slides", "pdf", "html", "excel", "documents", "academic"]
     },
     async (args, context) => {
-      const filePath = resolveGeneratedFilePath(String(args.path || ""), context);
+      const filePath = await resolveAgentWritePath(resolveGeneratedFilePath(String(args.path || ""), context), context.workspacePath);
       await fs.mkdir(path.dirname(filePath), { recursive: true });
       await fs.writeFile(filePath, String(args.content || ""), "utf-8");
-      return `File written: ${path.relative(context.workspacePath, filePath)}`;
+      const relativePath = path.relative(context.workspacePath, filePath);
+      return { ok: true, summary: `File written: ${relativePath}`, artifacts: [{ title: path.basename(filePath), path: relativePath, kind: "file" }] };
     }
   );
 
@@ -277,11 +283,12 @@ export function registerServerTools(deps: RegisterServerToolsDependencies) {
       const generatedFiles = diffGeneratedFiles(beforeFiles, await snapshotGeneratedFiles(context.outputPath), context);
       const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
       const generatedOutput = generatedFiles.map((filePath) => `Generated file: ${filePath}`).join("\n");
-      return [
+      const summary = [
         `Command executed (${command.source}): ${command.display}`,
         output || "(Command succeeded, no output)",
         generatedOutput
       ].filter(Boolean).join("\n");
+      return { ok: true, summary, artifacts: generatedFiles.map((filePath) => ({ title: path.basename(filePath), path: filePath, kind: "file" as const })) };
     }
   );
 
@@ -357,7 +364,8 @@ export function registerServerTools(deps: RegisterServerToolsDependencies) {
             mode,
             command: command.display,
             generatedFiles
-          }
+          },
+          artifacts: generatedFiles.map((filePath) => ({ title: path.basename(filePath), path: filePath, kind: "file" as const }))
         };
       } catch (error) {
         const err = error as Error & { stdout?: string; stderr?: string; code?: number; signal?: string };
@@ -402,14 +410,18 @@ export function registerServerTools(deps: RegisterServerToolsDependencies) {
     },
     async (args, context) => {
       const query = String(args.query || "");
-      const subPath = safeResolvePath(String(args.path || "."), context.workspacePath);
+      const subPath = await resolveAgentReadPath(String(args.path || "."), context.workspacePath);
       const command = ["rg", "--line-number", "--hidden", "--glob", "!node_modules", "--glob", "!.git"];
       if (args.glob) command.push("--glob", String(args.glob));
-      command.push(query, subPath);
+      for (const excluded of ["!.supercodex", "!.env*", "!.ssh", "!.aws", "!.config", "!.gnupg", "!.docker", "!.kube", "!.npmrc", "!.netrc", "!.pypirc", "!secrets.json", "!credentials.json", "!google-calendar.json", "!*.pem", "!*.key", "!id_rsa", "!id_ed25519"]) {
+        command.push("--glob", excluded);
+      }
+      command.push("--", query, subPath);
       const result = await execFileAsync(command[0], command.slice(1), {
         cwd: context.workspacePath,
         timeout: 20_000,
-        maxBuffer: 1024 * 1024 * 2
+        maxBuffer: 1024 * 1024 * 2,
+        env: sanitizedChildEnvironment()
       }).catch((error: Error & { stdout?: string; stderr?: string; code?: number }) => {
         if (error.code === 1) return { stdout: "", stderr: "" };
         throw error;
@@ -441,7 +453,7 @@ export function registerServerTools(deps: RegisterServerToolsDependencies) {
       timeoutMs: 10_000
     },
     async (args, context) => {
-      const filePath = safeResolvePath(String(args.path || ""), context.workspacePath);
+      const filePath = await resolveAgentReadPath(String(args.path || ""), context.workspacePath);
       const search = String(args.search || "");
       const replace = String(args.replace || "");
       if (!search) throw new Error("search text is required");
@@ -906,12 +918,11 @@ export function registerServerTools(deps: RegisterServerToolsDependencies) {
     },
     async (args) => {
       const url = String(args.url || "");
-      if (!/^https?:\/\//.test(url)) throw new Error("Only http/https URLs are allowed");
-      const response = await fetch(url);
-      const contentType = response.headers.get("content-type") || "";
-      const text = await response.text();
+      const response = await fetchPublicText(url, { timeoutMs: 20_000, maxBytes: 1_000_000 });
+      const contentType = response.contentType;
+      const text = response.text;
       if (contentType.includes("text/html") || looksLikeHtml(text)) {
-        return formatFetchedPage(url, text);
+        return formatFetchedPage(response.url, text);
       }
       if (contentType.includes("application/json")) {
         return compactJsonText(text, 8000);
@@ -1031,7 +1042,7 @@ export function registerServerTools(deps: RegisterServerToolsDependencies) {
       type: "function",
       function: {
         name: "webbridge_command",
-        description: "Send a safe command to Kimi WebBridge for real-browser work. Supports status-independent actions such as list_tabs and snapshot when extension is connected.",
+        description: "Read or navigate the real browser through Kimi WebBridge. For filling and clicking, use webbridge_interact.",
         parameters: {
           type: "object",
           properties: {
@@ -1066,6 +1077,40 @@ export function registerServerTools(deps: RegisterServerToolsDependencies) {
       }
       const payload = await callWebBridge(action, args.args ?? {}, String(args.session || "supercodex"));
       return summarizeWebBridgePayload(action, payload);
+    }
+  );
+
+  registerTool(
+    {
+      type: "function",
+      function: {
+        name: "webbridge_interact",
+        description: "Fill a field or click an element in the real browser. Each operation waits for user approval. Read a fresh snapshot first, use its @e reference, and include the exact page URL shown there. Never use for passwords, payment details, or other secrets.",
+        parameters: {
+          type: "object",
+          properties: {
+            action: { type: "string", enum: ["fill", "click"] },
+            session: { type: "string", description: "Stable WebBridge session for this goal" },
+            expectedUrl: { type: "string", description: "Exact URL from the latest browser snapshot" },
+            selector: { type: "string", description: "@e reference from the latest browser snapshot" },
+            value: { type: "string", description: "Replacement text for fill only. Do not include secrets." },
+            purpose: { type: "string", description: "Explain the intended result, especially for submit buttons" }
+          },
+          required: ["action", "session", "expectedUrl", "selector", "purpose"]
+        }
+      }
+    },
+    {
+      riskLevel: "external",
+      permissions: ["external:webbridge"],
+      timeoutMs: 30_000,
+      categories: ["browser"],
+      skillIds: ["webbridge"]
+    },
+    async (args, context) => {
+      if (!context.authorizeTool) throw new Error("Browser interaction requires an approval-enabled Agent run");
+      const payload = await performApprovedWebInteraction(args, callWebBridge);
+      return summarizeWebBridgePayload(String(args.action), payload);
     }
   );
 }

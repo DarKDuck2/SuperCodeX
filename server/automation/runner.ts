@@ -7,7 +7,7 @@ type CreateAutomationRunnerDependencies = {
   runningAutomations: Set<string>;
   persistStore: () => Promise<void>;
   getAutomationConversation: (automation: Automation) => Conversation;
-  runAgentLoop: (conversation: Conversation) => Promise<AgentResult>;
+  runAgentLoop: (conversation: Conversation, automation: Automation) => Promise<AgentResult>;
   saveGeneratedTextAttachment: (conversationId: string, originalName: string, content: string) => Promise<Attachment>;
   publicAttachment: (attachment: Attachment) => PublicAttachment;
   id: (prefix: string) => string;
@@ -28,10 +28,31 @@ export function createAutomationRunner(deps: CreateAutomationRunnerDependencies)
   } = deps;
 
   function startAutomationScheduler() {
-    void runDueAutomations();
+    void runDueAutomations().catch((error) => console.error("Automation scheduler failed", error));
     setInterval(() => {
-      void runDueAutomations();
+      void runDueAutomations().catch((error) => console.error("Automation scheduler failed", error));
     }, 30_000);
+  }
+
+  async function recover() {
+    let changed = false;
+    for (const automation of automations.values()) {
+      const interrupted = (automation.runs || []).filter((run) => run.status === "running");
+      if (!interrupted.length && automation.lastStatus !== "running") continue;
+      for (const run of interrupted) {
+        run.status = "error";
+        run.finishedAt = now();
+        run.error = "服务重启中断了任务。请检查已产生的操作后手动重试。";
+        run.unread = true;
+      }
+      automation.lastStatus = "error";
+      automation.lastError = "服务重启中断了任务。请检查已产生的操作后手动重试。";
+      automation.unreadCount = (automation.unreadCount || 0) + interrupted.length;
+      automation.nextRunAt = automation.enabled ? computeNextRunAt(automation.schedule, new Date(Date.now() + 1000)) : undefined;
+      automation.updatedAt = now();
+      changed = true;
+    }
+    if (changed) await persistStore();
   }
   
   async function runDueAutomations() {
@@ -58,9 +79,8 @@ export function createAutomationRunner(deps: CreateAutomationRunnerDependencies)
     automation.lastStatus = "running";
     automation.lastRunAt = run.startedAt;
     automation.updatedAt = run.startedAt;
-    await persistStore();
-  
     try {
+      await persistStore();
       const conversation = getAutomationConversation(automation);
       const userMessage: Message = {
         id: id("message"),
@@ -78,7 +98,7 @@ export function createAutomationRunner(deps: CreateAutomationRunnerDependencies)
       conversation.updatedAt = userMessage.createdAt;
       await persistStore();
   
-      const result = await runAgentLoop(conversation);
+      const result = await runAgentLoop(conversation, automation);
       const documentAttachment = await saveGeneratedTextAttachment(
         conversation.id,
         `${sanitizeFileName(automation.title || "automation-result")}-${new Date().toISOString().slice(0, 10)}.md`,
@@ -143,6 +163,7 @@ export function createAutomationRunner(deps: CreateAutomationRunnerDependencies)
   }
 
   return {
+    recover,
     startAutomationScheduler,
     runAutomation
   };

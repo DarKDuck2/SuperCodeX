@@ -15,6 +15,10 @@ export async function runRegisteredTool(
   options: {
     sanitize?: (toolName: string, result: string) => string;
     maxModelContentLength?: number;
+    authorizeTool?: ToolContext["authorizeTool"];
+    beforeToolExecute?: ToolContext["beforeToolExecute"];
+    afterToolExecute?: ToolContext["afterToolExecute"];
+    signal?: AbortSignal;
   } = {}
 ): Promise<ToolRuntimeResult> {
   let args: Record<string, unknown>;
@@ -41,7 +45,7 @@ export async function runRegisteredTool(
       }
     };
   }
-  const policy = evaluateToolPolicy(tool, args);
+  let policy = evaluateToolPolicy(tool, args);
   const trace: ToolTrace = {
     id: toolCall.id,
     toolName: toolCall.function.name,
@@ -65,25 +69,55 @@ export async function runRegisteredTool(
     };
   }
 
+  if (options.authorizeTool && ["write", "shell", "external"].includes(tool.metadata.riskLevel)) {
+    try {
+      const approved = await options.authorizeTool(toolCall.function.name, tool.metadata.riskLevel, args);
+      policy = approved
+        ? { action: "allow", reason: "approved by user" }
+        : { action: "deny", reason: "user declined this tool action" };
+    } catch (error) {
+      policy = { action: "deny", reason: error instanceof Error ? error.message : "approval failed" };
+    }
+    trace.policy = policy;
+    if (policy.action === "deny") {
+      const result: ToolResult = { ok: false, summary: policy.reason || "approval denied", error: policy.reason };
+      trace.finishedAt = new Date().toISOString();
+      trace.result = result;
+      return { modelContent: formatToolResult(result, toolCall.function.name, options.sanitize, options.maxModelContentLength), trace };
+    }
+  }
+
+  if (options.signal?.aborted) {
+    const reason = "tool action cancelled before execution";
+    trace.policy = { action: "deny", reason };
+    const result: ToolResult = { ok: false, summary: reason, error: reason };
+    trace.finishedAt = new Date().toISOString();
+    trace.result = result;
+    return { modelContent: formatToolResult(result, toolCall.function.name, options.sanitize, options.maxModelContentLength), trace };
+  }
+
+  if (options.beforeToolExecute) {
+    await options.beforeToolExecute(toolCall.function.name, tool.metadata.riskLevel, args);
+  }
+  if (options.signal?.aborted) throw new Error("tool action cancelled before execution");
+
+  let result: ToolResult;
   try {
     const rawResult = await tool.handler(args, context);
-    const result = normalizeToolResult(rawResult);
-    trace.finishedAt = new Date().toISOString();
-    trace.result = result;
-    return {
-      modelContent: formatToolResult(result, toolCall.function.name, options.sanitize, options.maxModelContentLength),
-      trace
-    };
+    result = normalizeToolResult(rawResult);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    const result: ToolResult = { ok: false, summary: `Tool error: ${message}`, error: message };
-    trace.finishedAt = new Date().toISOString();
-    trace.result = result;
-    return {
-      modelContent: formatToolResult(result, toolCall.function.name, options.sanitize, options.maxModelContentLength),
-      trace
-    };
+    result = { ok: false, summary: `Tool error: ${message}`, error: message };
   }
+  trace.finishedAt = new Date().toISOString();
+  trace.result = result;
+  // A failed result checkpoint must stop the agent. Returning a normal tool result
+  // here could prompt the model to repeat an action whose side effect already happened.
+  await options.afterToolExecute?.(toolCall.function.name, tool.metadata.riskLevel, args, result, toolCall.id);
+  return {
+    modelContent: formatToolResult(result, toolCall.function.name, options.sanitize, options.maxModelContentLength),
+    trace
+  };
 }
 
 function parseToolArguments(value: string) {

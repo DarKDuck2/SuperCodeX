@@ -133,6 +133,6 @@ export const builtinSkillCatalog: Skill[] = [
     source: "builtin",
     categories: ["browser", "search", "external"],
     keywords: ["webbridge", "浏览器", "真实浏览器", "网页操作", "browser"],
-    toolNames: ["webbridge_status", "webbridge_command"]
+    toolNames: ["webbridge_status", "webbridge_command", "webbridge_interact"]
   }
 ];

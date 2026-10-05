@@ -37,6 +37,10 @@ import {
 } from "lucide-react";
 import { ClipboardEvent, FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { SettingsDock } from "./components/SettingsDock";
+import { GoalsWorkspace } from "./components/GoalsWorkspace";
+import { MemoryWorkspace } from "./components/MemoryWorkspace";
+import { AttentionWorkspace } from "./components/AttentionWorkspace";
+import { CalendarWorkspace } from "./components/CalendarWorkspace";
 import { Sidebar } from "./components/Sidebar";
 import {
   buildMessageDisplayItems,
@@ -59,6 +63,9 @@ import {
 import { readSseStream } from "./lib/stream";
 import type {
   ActiveView,
+  AttentionItem,
+  AttentionSnapshot,
+  Approval,
   AgentRunMode,
   AgentStreamEvent,
   ApiSettings,
@@ -69,6 +76,10 @@ import type {
   AutomationPreview,
   ConversationSummary,
   DeliveryMode,
+  Goal,
+  GoalArtifact,
+  MemoryFact,
+  MemoryCandidate,
   Message,
   Project,
   ProjectTreeNode,
@@ -158,6 +169,13 @@ function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [automations, setAutomations] = useState<Automation[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [memories, setMemories] = useState<MemoryFact[]>([]);
+  const [memoryCandidates, setMemoryCandidates] = useState<MemoryCandidate[]>([]);
+  const [attention, setAttention] = useState<AttentionSnapshot>({ mode: "important", items: [], unreadAlertCount: 0 });
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">(typeof Notification === "undefined" ? "unsupported" : Notification.permission);
+  const [selectedGoalId, setSelectedGoalId] = useState("");
   const [activeConversationId, setActiveConversationId] = useState("");
   const [settings, setSettings] = useState<ApiSettings>(defaultSettings);
   const [isWorking, setIsWorking] = useState(false);
@@ -189,6 +207,8 @@ function App() {
   const activeRequestRef = useRef<AbortController | null>(null);
   const messageStackRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const seenAttentionIdsRef = useRef<Set<string> | null>(null);
+  const lastDesktopNotificationAtRef = useRef(0);
 
   const hasConversation = messages.length > 0;
   const activeProject = useMemo(
@@ -235,18 +255,18 @@ function App() {
     () => automations.reduce((total, automation) => total + (automation.unreadCount || 0), 0),
     [automations]
   );
+  const pendingApprovalCount = approvals.filter((approval) => approval.status === "pending").length;
 
   useEffect(() => {
     loadAppState();
   }, []);
 
   useEffect(() => {
-    if (activeView !== "automations") return;
     const timer = window.setInterval(() => {
-      void syncAppState();
-    }, 30_000);
+      void refreshBackgroundState();
+    }, activeView === "goals" || isWorking || pendingApprovalCount > 0 ? 3_000 : 10_000);
     return () => window.clearInterval(timer);
-  }, [activeView]);
+  }, [activeView, isWorking, pendingApprovalCount > 0]);
 
   useEffect(() => {
     if (!showAutomationDialog || !automationInstruction.trim()) {
@@ -275,6 +295,7 @@ function App() {
       setIsBooting(true);
       setAppError("");
       const payload = await syncAppState();
+      await refreshBackgroundState();
       const firstConversation = payload.projects[0]?.conversations[0];
       if (firstConversation) {
         setActiveConversationId(firstConversation.id);
@@ -294,12 +315,49 @@ function App() {
     setProjects(payload.projects);
     setSkills(payload.skills);
     setAutomations(payload.automations);
+    setGoals(payload.goals || []);
+    setApprovals(payload.approvals || []);
+    setMemories(payload.memories || []);
+    setMemoryCandidates(payload.memoryCandidates || []);
     setSettings({
       baseUrl: payload.settings.baseUrl || defaultSettings.baseUrl,
       apiKey: payload.settings.apiKey === "********" ? "" : payload.settings.apiKey,
       model: payload.settings.model || defaultSettings.model
     });
     return payload;
+  }
+
+  async function refreshBackgroundState() {
+    try {
+      const [goalsResponse, approvalsResponse, automationsResponse, candidatesResponse, attentionResponse] = await Promise.all([
+        fetch("/api/goals"),
+        fetch("/api/approvals"),
+        fetch("/api/automations"),
+        fetch("/api/memory-candidates"),
+        fetch("/api/attention")
+      ]);
+      if (goalsResponse.ok) setGoals(((await goalsResponse.json()) as { goals: Goal[] }).goals);
+      if (approvalsResponse.ok) setApprovals(((await approvalsResponse.json()) as { approvals: Approval[] }).approvals);
+      if (automationsResponse.ok) setAutomations(((await automationsResponse.json()) as { automations: Automation[] }).automations);
+      if (candidatesResponse.ok) setMemoryCandidates(((await candidatesResponse.json()) as { candidates: MemoryCandidate[] }).candidates);
+      if (attentionResponse.ok) applyAttentionSnapshot((await attentionResponse.json()) as AttentionSnapshot);
+    } catch {
+      // Keep the last known background state until the local server reconnects.
+    }
+  }
+
+  function applyAttentionSnapshot(snapshot: AttentionSnapshot) {
+    if (seenAttentionIdsRef.current && snapshot.mode !== "off" && typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
+      const fresh = snapshot.items.filter((item) => !seenAttentionIdsRef.current!.has(item.id) && !item.read && (snapshot.mode === "all" || item.priority === "important"));
+      if (fresh.length && Date.now() - lastDesktopNotificationAtRef.current >= 60_000) {
+        try {
+          new Notification(fresh.length === 1 ? fresh[0].title : `${fresh.length} 项新进展`, { body: "打开 SuperCodex 查看提醒。", tag: "supercodex-attention" });
+          lastDesktopNotificationAtRef.current = Date.now();
+        } catch { /* The in-app inbox remains available. */ }
+      }
+    }
+    seenAttentionIdsRef.current = new Set(snapshot.items.map((item) => item.id));
+    setAttention(snapshot);
   }
 
   async function loadMessages(conversationId: string) {
@@ -1158,6 +1216,196 @@ function App() {
     setSearchResults(payload.results);
   }
 
+  async function goalRequest(url: string, method: "POST" | "PATCH" | "PUT", body?: unknown) {
+    const response = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    const payload = await response.json().catch(() => ({})) as { goal?: Goal; error?: string };
+    if (!response.ok) throw new Error(payload.error || "目标操作失败");
+    await syncAppState();
+    setAppError("");
+    return payload;
+  }
+
+  async function createGoal(input: { projectId: string; title: string; description: string }) {
+    try {
+      const payload = await goalRequest("/api/goals", "POST", input);
+      if (payload.goal) setSelectedGoalId(payload.goal.id);
+      return true;
+    } catch (error) { setAppError(error instanceof Error ? error.message : "创建目标失败"); return false; }
+  }
+
+  async function addGoalTask(goalId: string, input: { title: string; instruction: string; schedule?: string; watchPath?: string; githubRepo?: string; calendarEvents?: boolean }) {
+    try { await goalRequest(`/api/goals/${goalId}/tasks`, "POST", input); return true; }
+    catch (error) { setAppError(error instanceof Error ? error.message : "添加步骤失败"); return false; }
+  }
+
+  async function updateGoalTask(goalId: string, taskId: string, input: { title: string; instruction: string }) {
+    try { await goalRequest(`/api/goals/${goalId}/tasks/${taskId}`, "PATCH", input); return true; }
+    catch (error) { setAppError(error instanceof Error ? error.message : "修改步骤失败"); return false; }
+  }
+
+  async function reorderGoalTasks(goalId: string, taskIds: string[], expectedPlanRevision: number) {
+    try { await goalRequest(`/api/goals/${goalId}/task-order`, "PUT", { taskIds, expectedPlanRevision }); return true; }
+    catch (error) { setAppError(error instanceof Error ? error.message : "调整步骤顺序失败"); return false; }
+  }
+
+  async function planGoal(goalId: string) {
+    try { await goalRequest(`/api/goals/${goalId}/plan`, "POST"); }
+    catch (error) { setAppError(error instanceof Error ? error.message : "生成步骤失败"); }
+  }
+
+  async function reviewGoal(goalId: string) {
+    try { await goalRequest(`/api/goals/${goalId}/reviews`, "POST"); }
+    catch (error) { setAppError(error instanceof Error ? error.message : "生成目标复盘失败"); }
+  }
+
+  async function decideGoalSuggestion(goalId: string, reviewId: string, suggestionId: string, accept: boolean) {
+    try { await goalRequest(`/api/goals/${goalId}/reviews/${reviewId}/suggestions/${suggestionId}/decision`, "POST", { accept }); }
+    catch (error) { setAppError(error instanceof Error ? error.message : "处理后续建议失败"); }
+  }
+
+  async function runGoalTask(goalId: string, taskId: string) {
+    try { await goalRequest(`/api/goals/${goalId}/tasks/${taskId}/run`, "POST"); }
+    catch (error) { setAppError(error instanceof Error ? error.message : "执行步骤失败"); }
+  }
+
+  async function setGoalStatus(goalId: string, status: Goal["status"]) {
+    try { await goalRequest(`/api/goals/${goalId}`, "PATCH", { status }); }
+    catch (error) { setAppError(error instanceof Error ? error.message : "更新目标失败"); }
+  }
+
+  async function createGoalArtifact(goalId: string, title: string, content: string): Promise<GoalArtifact | undefined> {
+    try {
+      const response = await fetch(`/api/goals/${goalId}/artifacts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, content }) });
+      const payload = await response.json() as { artifact?: GoalArtifact; error?: string };
+      if (!response.ok || !payload.artifact) throw new Error(payload.error || "创建文稿失败");
+      await syncAppState();
+      setAppError("");
+      return payload.artifact;
+    } catch (error) { setAppError(error instanceof Error ? error.message : "创建文稿失败"); return undefined; }
+  }
+
+  async function updateGoalArtifact(goalId: string, artifactId: string, input: { expectedRevision: number; title: string; content: string }): Promise<GoalArtifact | undefined> {
+    try {
+      const response = await fetch(`/api/goals/${goalId}/artifacts/${artifactId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
+      const payload = await response.json() as { artifact?: GoalArtifact; error?: string };
+      if (!response.ok || !payload.artifact) throw new Error(payload.error || "更新文稿失败");
+      await syncAppState();
+      setAppError("");
+      return payload.artifact;
+    } catch (error) { setAppError(error instanceof Error ? error.message : "更新文稿失败"); return undefined; }
+  }
+
+  async function deleteGoalArtifact(goalId: string, artifactId: string, expectedRevision: number): Promise<boolean> {
+    try {
+      const response = await fetch(`/api/goals/${goalId}/artifacts/${artifactId}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedRevision }) });
+      if (!response.ok) {
+        const payload = await response.json() as { error?: string };
+        throw new Error(payload.error || "删除文稿失败");
+      }
+      await syncAppState();
+      setAppError("");
+      return true;
+    } catch (error) { setAppError(error instanceof Error ? error.message : "删除文稿失败"); return false; }
+  }
+
+  async function restoreGoalArtifact(goalId: string, artifactId: string, expectedRevision: number, sourceRevision: number): Promise<GoalArtifact | undefined> {
+    try {
+      const response = await fetch(`/api/goals/${goalId}/artifacts/${artifactId}/restore`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedRevision, sourceRevision }) });
+      const payload = await response.json() as { artifact?: GoalArtifact; error?: string };
+      if (!response.ok || !payload.artifact) throw new Error(payload.error || "恢复文稿失败");
+      await syncAppState();
+      setAppError("");
+      return payload.artifact;
+    } catch (error) { setAppError(error instanceof Error ? error.message : "恢复文稿失败"); return undefined; }
+  }
+
+  async function decideApproval(approvalId: string, approved: boolean) {
+    try { await goalRequest(`/api/approvals/${approvalId}/decision`, "POST", { approved }); }
+    catch (error) { setAppError(error instanceof Error ? error.message : "审批失败"); }
+  }
+
+  async function updateAttention(path: string, method: "POST" | "PATCH", body?: unknown) {
+    try {
+      const response = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+      const payload = await response.json() as AttentionSnapshot & { error?: string };
+      if (!response.ok) throw new Error(payload.error || "更新提醒失败");
+      applyAttentionSnapshot(payload);
+      setAppError("");
+    } catch (error) { setAppError(error instanceof Error ? error.message : "更新提醒失败"); }
+  }
+
+  async function enableDesktopNotifications() {
+    if (typeof Notification === "undefined") return;
+    try { setNotificationPermission(await Notification.requestPermission()); }
+    catch { setNotificationPermission(Notification.permission); }
+  }
+
+  function openAttention(item: AttentionItem) {
+    void updateAttention(`/api/attention/${encodeURIComponent(item.id)}/read`, "POST");
+    if (item.goalId || item.approvalId) {
+      if (item.goalId) setSelectedGoalId(item.goalId);
+      setActiveView("goals");
+    } else if (item.automationId) {
+      setSelectedAutomationId(item.automationId);
+      setActiveView("automations");
+    }
+  }
+
+  async function createMemory(input: { content: string; scope: MemoryFact["scope"]; goalId?: string; useMode: NonNullable<MemoryFact["useMode"]> }) {
+    try {
+      const response = await fetch("/api/memories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "保存记忆失败");
+      await syncAppState();
+      setAppError("");
+      return true;
+    } catch (error) { setAppError(error instanceof Error ? error.message : "保存记忆失败"); return false; }
+  }
+
+  async function updateMemory(id: string, content: string) {
+    try {
+      const response = await fetch(`/api/memories/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content }) });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "更新记忆失败");
+      await syncAppState();
+      setAppError("");
+      return true;
+    } catch (error) { setAppError(error instanceof Error ? error.message : "更新记忆失败"); return false; }
+  }
+
+  async function setMemoryUseMode(id: string, useMode: NonNullable<MemoryFact["useMode"]>) {
+    try {
+      const response = await fetch(`/api/memories/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ useMode }) });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "更新记忆使用方式失败");
+      await syncAppState();
+      setAppError("");
+    } catch (error) { setAppError(error instanceof Error ? error.message : "更新记忆使用方式失败"); }
+  }
+
+  async function forgetMemory(id: string) {
+    try {
+      const response = await fetch(`/api/memories/${id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("忘记失败");
+      await syncAppState();
+      setAppError("");
+    } catch (error) { setAppError(error instanceof Error ? error.message : "忘记失败"); }
+  }
+
+  async function decideMemoryCandidate(id: string, accept: boolean, content?: string) {
+    try {
+      const response = await fetch(`/api/memory-candidates/${id}/decision`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accept, content }) });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "处理候选记忆失败");
+      await syncAppState();
+      setAppError("");
+    } catch (error) { setAppError(error instanceof Error ? error.message : "处理候选记忆失败"); }
+  }
+
   async function refreshWebBridgeStatus() {
     try {
       const response = await fetch("/api/webbridge/status");
@@ -1272,6 +1520,8 @@ function App() {
         historyItems={historyItems}
         isCollapsed={isSidebarCollapsed}
         unreadAutomationCount={unreadAutomationCount}
+        pendingApprovalCount={pendingApprovalCount}
+        unreadAttentionCount={attention.unreadAlertCount}
         onCreateTask={createTask}
         onLoadMessages={loadMessages}
         onSelectView={(view) => {
@@ -1311,6 +1561,13 @@ function App() {
           />
         )}
 
+        {pendingApprovalCount > 0 && activeView !== "goals" && (
+          <div className="approvalBanner" role="status">
+            <span>有 {pendingApprovalCount} 项工具操作等待你审批，Agent 正在等待决定。</span>
+            <button type="button" onClick={() => setActiveView("goals")}>查看审批</button>
+          </div>
+        )}
+
         <div
           className={`heroWork ${hasConversation || activeView !== "home" ? "withMessages" : "emptyHome"}`}
         >
@@ -1326,6 +1583,14 @@ function App() {
                 <h1>
                   {activeView === "skills"
                     ? "连接 Agent 能力"
+                    : activeView === "attention"
+                      ? "提醒"
+                    : activeView === "goals"
+                      ? "长期目标"
+                    : activeView === "memory"
+                      ? "个人记忆"
+                    : activeView === "calendar"
+                      ? "日历连接"
                     : activeView === "automations"
                       ? "定时任务"
                       : activeView === "search"
@@ -1367,6 +1632,50 @@ function App() {
                 </div>
               </section>
             )}
+
+            {activeView === "goals" && (
+              <GoalsWorkspace
+                goals={goals}
+                approvals={approvals}
+                automations={automations}
+                projects={projects}
+                selectedGoalId={selectedGoalId}
+                onSelect={setSelectedGoalId}
+                onCreate={createGoal}
+                onAddTask={addGoalTask}
+                onUpdateTask={updateGoalTask}
+                onReorder={reorderGoalTasks}
+                onPlan={planGoal}
+                onReview={reviewGoal}
+                onSuggestionDecision={decideGoalSuggestion}
+                onRun={runGoalTask}
+                onStatus={setGoalStatus}
+                onCreateArtifact={createGoalArtifact}
+                onUpdateArtifact={updateGoalArtifact}
+                onRestoreArtifact={restoreGoalArtifact}
+                onDeleteArtifact={deleteGoalArtifact}
+                onDecision={decideApproval}
+                onOpenConversation={(id) => { void loadMessages(id); }}
+              />
+            )}
+
+            {activeView === "attention" && (
+              <AttentionWorkspace
+                snapshot={attention}
+                permission={notificationPermission}
+                onMode={(mode) => updateAttention("/api/attention/preferences", "PATCH", { mode })}
+                onRead={(id) => updateAttention(`/api/attention/${encodeURIComponent(id)}/read`, "POST")}
+                onReadAll={() => updateAttention("/api/attention/read-all", "POST")}
+                onEnableDesktop={enableDesktopNotifications}
+                onOpen={openAttention}
+              />
+            )}
+
+            {activeView === "memory" && (
+              <MemoryWorkspace memories={memories} candidates={memoryCandidates} goals={goals} onCreate={createMemory} onUpdate={updateMemory} onUseMode={setMemoryUseMode} onForget={forgetMemory} onDecideCandidate={decideMemoryCandidate} />
+            )}
+
+            {activeView === "calendar" && <CalendarWorkspace />}
 
             {activeView === "skills" && (
               <>

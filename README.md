@@ -25,15 +25,28 @@ SuperCodex 当前适合本地个人工作台和小团队内测，不建议直接
 - 图片处理能力，支持缩放、裁剪、旋转、灰度、模糊、锐化、翻转和格式转换。
 - 网络搜索能力，基于 `open-websearch`。
 - Kimi WebBridge 集成，可连接真实浏览器执行网页任务。
+- Google 日历主日历只读连接：支持桌面应用 OAuth 授权、PKCE、令牌刷新、断开与撤销，并可读取未来日程供界面或 Agent 使用。
+- 长期目标可选择监控已连接的 Google 日历：创建步骤时记录未来七天已有事件，此后每五分钟轮询近期新增或更新，并在入队时持久保存已处理版本，避免重复执行。
 - 自动安全护栏：常规工具调用默认自动执行，删除、强制清理、仓库重置、格式化、提权等危险命令会被后端直接拦截。
 - 工具输出清洗，避免浏览器任务把 HTML / DOM / 原始 JSON 直接输出给用户。
 - 任务步骤卡片和产物卡片，让执行过程和交付物更接近真实办公工作流。
+- 长期目标工作区：保存目标、拆解步骤、按固定时间重复执行，并查看活动记录。
+- 用户可在目标中用箭头重排未完成步骤；已完成、排队和运行中的步骤保留原位置，计划版本防止过期页面覆盖新顺序。
+- 完成最后一个非定期目标步骤后，可生成复盘和后续步骤建议；建议需由用户逐条接纳才会进入计划。
+- 每个目标可保存多份可编辑文稿，用于跨步骤持续维护报告或清单；用户直接编辑，Agent 可在逐次批准后更新。版本号防止过期编辑覆盖新内容。
+- 长期目标步骤在后端执行，关闭浏览器不会中断；重启后，尚未开始工具操作的规划步骤会自动恢复，进入工具阶段的步骤需人工核对后再运行。
+- 长期目标步骤可监控公开 GitHub 仓库的 Release；新版本会触发一次后台执行，已处理的版本 ID 会持久保存。
+- 定时任务在服务重启后会把未完成的运行标为中断，跳过可能已产生副作用的那一次运行。
+- 普通会话、长期目标和定时任务中的写文件、命令与外部工具操作需要逐次批准；聊天界面会提示待审批操作。
+- 用户可维护跨会话或指定目标的记忆，随时编辑或删除；可逐条设置为相关任务使用、始终提供给 Agent 或仅本地保存。对话中的长期偏好先作为带原话来源的候选项，确认后才按任务相关性进入 Agent 上下文。
+- 提醒收件箱汇总审批、目标进展和定时任务结果；可标记已读，选择关闭、仅重要或所有进展，浏览器桌面通知需用户主动启用。
+- 同一轮到达的后台事件合并为一条桌面通知，桌面通知最短间隔为 1 分钟；所有事件仍保留在提醒收件箱。
 
 ### 实验能力
 
 - 自然语言创建自动化任务，目前支持每天固定时间、固定小时间隔和少量办公语义。
-- Kimi WebBridge 浏览器控制，目前只开放状态检查、标签页、快照、导航等低风险动作。
-- 技能入口目前用于表达产品方向，邮件、团队消息、文件连接仍需要真实连接器补齐。
+- Kimi WebBridge 浏览器控制：可检查状态、标签页、快照和导航；填写或点击页面元素需逐次审批。审批展示实际页面与元素，执行前会再次核对。
+- Google 日历连接器需要用户自行创建 Google Cloud 桌面应用 OAuth 客户端并完成真实账号授权；邮件、团队消息、云文件连接仍待接入。
 
 ## 技术栈
 
@@ -43,7 +56,7 @@ SuperCodex 当前适合本地个人工作台和小团队内测，不建议直接
 - 文件上传：Multer
 - 网络搜索：open-websearch
 - 浏览器控制：Kimi WebBridge
-- 状态存储：本地 `.supercodex/state.json` 索引 + `.supercodex/conversations/` 会话目录
+- 状态存储：本地 `.supercodex/state.sqlite` + `.supercodex/conversations/` 会话导出目录
 
 ## 项目结构
 
@@ -65,9 +78,13 @@ SuperCodex/
 
 `.supercodex/` 是运行时目录，会在本地自动生成，用于保存会话、上传文件、自动化结果和索引状态。它包含个人数据，默认不进入 git。
 
+Google 日历授权文件单独保存在 `~/.supercodex/connectors/<工作区标识>/google-calendar.json`，文件权限为 `0600`，不会写入项目内的 SQLite。当前 Agent 仍可通过本机命令接触用户文件系统，尚无独立进程沙箱或系统钥匙串隔离。
+
 ## 快速开始
 
 ### 1. 安装依赖
+
+需要 Node.js 24 或更新版本；当前开发环境使用 Node.js 26。持久状态使用 Node 内置 SQLite。
 
 ```bash
 npm install
@@ -94,6 +111,10 @@ RECENT_CONTEXT_MESSAGES=24
 MAX_CONTEXT_TOOL_CHARS=600000
 MAX_CONTEXT_MESSAGE_CHARS=10000
 MAX_TOOL_RESULT_CHARS=12000
+MAX_CONCURRENT_GOAL_TASKS=2
+# 可选，也可在“日历连接”界面填写
+GOOGLE_OAUTH_CLIENT_ID=your-desktop-client.apps.googleusercontent.com
+GOOGLE_OAUTH_CLIENT_SECRET=
 ```
 
 如果使用 DeepSeek，可配置为：
@@ -188,6 +209,29 @@ npm test
 - `PATCH /api/automations/:id`：更新标题、任务内容、时间规则或启停状态。
 - `DELETE /api/automations/:id`
 
+### 长期目标与审批
+
+- `GET /api/goals`、`POST /api/goals`：查看和创建长期目标。
+- `PATCH /api/goals/:id`：暂停、恢复或完成目标。
+- `POST /api/goals/:id/plan`：使用已配置模型生成执行步骤。
+- `POST /api/goals/:id/reviews`：复盘最近完成的步骤；相同执行结果的复盘会复用。
+- `POST /api/goals/:id/reviews/:reviewId/suggestions/:suggestionId/decision`：逐条接纳或忽略后续建议。
+- `POST /api/goals/:id/tasks`：手动添加步骤，可设置每天固定时间、每 N 小时、工作区文件变化或公开 GitHub 仓库新 Release 触发。
+- `PATCH /api/goals/:id/tasks/:taskId`：修订未完成且未运行中的步骤名称和执行说明。
+- `PUT /api/goals/:id/task-order`：提交未完成步骤 ID 的新顺序和 `expectedPlanRevision`；过期版本返回冲突。
+- `POST /api/goals/:id/tasks/:taskId/run`：立即把步骤加入后台队列。
+- `GET /api/approvals`、`POST /api/approvals/:id/decision`：查看并处理敏感工具审批。
+- `GET /api/memories`、`POST /api/memories`、`PATCH /api/memories/:id`、`DELETE /api/memories/:id`：管理个人记忆。
+- `POST /api/goals/:id/artifacts`、`PATCH /api/goals/:id/artifacts/:artifactId`、`DELETE /api/goals/:id/artifacts/:artifactId`：创建、更新和删除目标文稿；更新与删除需提交当前版本号。
+- `POST /api/goals/:id/artifacts/:artifactId/restore`：提交 `expectedRevision` 和 `sourceRevision`，将保留的历史内容恢复为新版本。每份文稿保留最近 20 个旧版本及更新来源；删除文稿会一并删除其历史。
+- `GET /api/goals/:id/files/:fileId/content`：下载目标步骤生成并登记的文件；可用 `?revision=N` 下载保留的旧版本。成功的文件工具结果会自动关联到目标；命令在默认产物目录以外生成的文件可由 Agent 获批调用 `register_goal_file` 登记。单个文件不超过 100 MB 时，系统将内容复制到 `.supercodex/goal-files/`，保存 SHA-256 校验值及最近 20 个旧版本；原工作区文件后续变化不影响已交付快照。超过 100 MB 的文件和升级前已有但未重新生成的文件仍读取实时工作区路径，下载时重新校验路径。
+- `GET /api/memory-candidates`、`POST /api/memory-candidates/:id/decision`：查看、修正并确认或忽略对话中的候选记忆。
+- `GET /api/attention`、`PATCH /api/attention/preferences`、`POST /api/attention/:id/read`、`POST /api/attention/read-all`：查看提醒、调整强度和标记已读。
+
+长期目标执行依赖本地后端持续运行；当前尚未提供常驻系统服务。不同目标默认最多并发执行 2 个步骤，同一目标内保持顺序。后端重启后，只有尚未进入工具阶段、且执行提示之后没有其他消息的步骤会自动重新入队；其余执行中的步骤标为“已中断”，供用户核对副作用。若会话保留了工具调用却缺少结果，恢复时会补入“执行状态未知”的记录，避免后续模型请求读取不完整的调用序列。
+
+GitHub Release 触发器填写 `owner/repo`。创建时记录最近 20 个公开 Release 作为基线，之后约每 15 分钟检查一次；同一版本 ID 不会重复触发。它目前只读取公开仓库的第一页，不包含私有仓库 OAuth、Webhook 即时推送或超过一页的补偿抓取。[GitHub Release API](https://docs.github.com/en/rest/releases/releases?apiVersion=latest)
+
 当前自动化支持：
 
 - 每天固定时间：`每天 09:00`、`每天早上9点`、`11:30返回早盘情况`
@@ -232,30 +276,31 @@ Agent 的系统提示词不再写死在 `server/index.ts` 中，而是维护在 
 | `extract_docx_text` | 提取 Word DOCX 附件正文 |
 | `inspect_presentation` | 提取 PPTX 幻灯片文本结构 |
 | `transform_image` | 修改图片并生成新附件 |
-| `fetch_url` | 抓取网页并提取可读内容 |
+| `fetch_url` | 抓取公开 HTTP/HTTPS 网页并提取可读内容；拒绝本机、内网及其重定向地址 |
 | `search_web` | 调用 open-websearch 搜索网页 |
 | `webbridge_status` | 检查 Kimi WebBridge 状态 |
-| `webbridge_command` | 通过 Kimi WebBridge 控制真实浏览器 |
+| `webbridge_command` | 通过 Kimi WebBridge 读取标签页、页面快照和导航 |
+| `webbridge_interact` | 逐次审批后填写或点击浏览器元素 |
 
 ### 自动安全策略
 
-SuperCodex 默认完全自动执行 Agent 选择的工具，不要求用户在任务中途逐次确认。为了避免破坏性操作，后端会自动拦截删除、移入废纸篓、`find -delete`、`git clean`、`git reset --hard`、格式化磁盘、写入块设备、提权、关机重启等危险命令。文件工具仍限制在当前工作区内运行。
+普通会话、长期目标和定时任务中的写文件、命令及外部工具操作需要逐次批准。审批会展示完整工具参数；超过 32000 字符的操作需拆分后再请求审批，包含凭据字段的参数会被拒绝。普通会话停止或断开时，其待审批请求会取消。后端仍会拦截删除、移入废纸篓、`find -delete`、`git clean`、`git reset --hard`、格式化磁盘、提权、关机重启等危险命令。自动文件读取与搜索会核对符号链接的真实目标，排除 `.env`、`.supercodex`、常见密钥路径等；用户批准的命令子进程不会继承后端名称含密钥或令牌含义的环境变量。
 
-安全策略位于 `server/core/security.ts`，路径限制位于 `server/core/paths.ts`。这些规则有最小测试覆盖，方便开源后审查和扩展。
+安全策略位于 `server/core/security.ts`，路径限制位于 `server/core/paths.ts` 和 `server/core/agent-paths.ts`。这些规则有测试覆盖，方便开源后审查和扩展。
 
 ### Claude Code 委派
 
 代码类任务会优先暴露 `delegate_to_claude_code` 工具，让 SuperCodex 作为监工把实现、修复、重构或测试任务交给 Claude Code。默认命令为：
 
 ```bash
-claude --print --dangerously-skip-permissions "<task prompt>"
+claude --print "<task prompt>"
 ```
 
 可通过环境变量调整本机 Claude Code 调用方式：
 
 ```bash
 CLAUDE_CODE_EXECUTABLE=claude
-CLAUDE_CODE_ARGS="--print --dangerously-skip-permissions"
+CLAUDE_CODE_ARGS="--print"
 CLAUDE_CODE_TIMEOUT_MS=600000
 ```
 
@@ -315,7 +360,7 @@ SuperCodex 会为每个对话维护一个独立目录：
 └── artifacts/        # Agent 产生的文件、图片、报告等产物
 ```
 
-`state.json` 继续作为轻量索引，便于快速加载项目、历史记录、自动化和附件映射；完整对话和产物则按会话目录落盘，避免长期使用后所有数据混在一个文件里。新对话标题会优先由模型进行短标题分类生成，无模型配置时使用本地规则兜底。
+`state.sqlite` 是项目、会话、自动化、目标、审批及附件映射的权威状态。旧版 `state.json` 会在首次启动时导入，原文件保留供人工备份；之后不会再读取其变更。完整对话和产物也会按会话目录导出。新对话标题会优先由模型进行短标题分类生成，无模型配置时使用本地规则兜底。
 
 ## 文件与图片能力
 
@@ -336,6 +381,15 @@ SuperCodex 会为每个对话维护一个独立目录：
 - png / jpeg / webp 格式转换
 
 生成后的图片会作为新附件保存，并在前端显示为产物卡片。
+
+## Google 日历连接
+
+1. 在 Google Cloud Console 启用 Calendar API，配置 OAuth 同意屏幕，并创建“桌面应用”OAuth 客户端。若应用处于测试模式，将当前 Google 账号加入测试用户。
+2. 在侧栏“日历连接”中填写 Client ID，保存后点击“连接 Google 日历”。授权在系统浏览器完成，回调到本机 `127.0.0.1`；授权页完成后返回工作台即可看到未来七天事件。
+3. Agent 在日历相关任务中可使用 `list_calendar_events` 只读工具。断开连接会先清除本地令牌并向 Google 发起撤销请求；若撤销失败，界面会提示到 Google 账号中手动撤销。
+4. 在“长期目标”中添加步骤并勾选“监控已连接的 Google 日历”，即可让未来七天内新增或修改的事件触发该步骤。初次建立的事件基线不会触发执行。
+
+该连接器仅请求 `calendar.events.readonly`，当前读取主日历；界面和 Agent 每次最多显示 50 条、时间范围最多 31 天。目标触发器会翻页检查最多 500 条，超过上限时保留原游标并报错。触发器是五分钟轮询，会漏掉两次检查之间创建又删除的事件，也不覆盖移出未来七天窗口的事件；尚未接入 Google 推送或完整增量同步，不能创建或修改事件。OAuth 流程已用模拟 Google 响应测试；没有用户账号凭据时，真实授权结果不能在仓库测试中证明。
 
 ## WebBridge
 
@@ -360,6 +414,8 @@ WebBridge 适用于需要真实登录态、真实网页交互或截图的任务�
 SuperCodex 是本地 Agent，具备文件读写和命令执行能力。当前安全策略包括：
 
 - 文件路径限制在当前工作区内。
+- 自动读取工具拒绝已知凭据及运行时状态路径，并检查符号链接的真实目标；文件搜索排除这些路径。
+- Agent 发起的命令子进程会清除名称包含 key、token、secret、password、auth 等的环境变量。
 - 命令执行存在黑名单过滤。
 - 默认阻止高风险命令，例如：
   - `rm -rf`
@@ -370,23 +426,26 @@ SuperCodex 是本地 Agent，具备文件读写和命令执行能力。当前安
   - `dd if=`
 - 网页抓取会清洗 HTML / DOM，避免原始网页源码直接进入最终回复。
 
-注意：当前项目还不是强沙箱环境。如果要在生产或多人环境使用，建议增加容器隔离、权限确认和审计日志。
+注意：当前项目还不是强沙箱环境。经批准的命令仍可主动访问本机文件系统，名称不典型的凭据文件也可能被读取。生产或多人环境需要独立进程沙箱、凭据代理、网络出口限制和更完整的审计。
 
 ## 数据存储
 
 本地状态存储在：
 
 ```text
-.supercodex/state.json
+.supercodex/state.sqlite
+.supercodex/secrets.json
 ```
 
 附件存储在：
 
 ```text
-.supercodex/uploads/
+.supercodex/conversations/<对话标题>-<短ID>/uploads/
 ```
 
 这些数据默认不应提交到 Git。
+同一数据目录一次只能运行一个后端实例；第二个实例会被数据库租约拒绝，防止覆盖内存中的状态。同机进程仍存活时，即使心跳暂时过期也不会被接管。每次持久化在调用时固定状态快照，长期目标每次工具调用前后分别保存启动与结果状态；工具阶段保存失败的步骤会标为“已中断”，需要核对副作用。当前仍只有单进程执行队列，尚未实现跨进程任务租约。
+Node 内置 SQLite 目前仍标记为 release candidate；需要在目标部署平台上验证 Node 版本和数据库文件备份、恢复流程。
 
 ## 常见问题
 
@@ -450,11 +509,16 @@ npx open-websearch --help
 ## 当前限制
 
 - 没有真正的 Docker / VM 沙箱隔离。
-- 自动化任务目前是基础数据结构，尚未实现完整调度器。
-- 邮件、日历、云文档等办公连接仍是技能入口，尚未接入完整第三方 OAuth。
+- 自动化和长期目标支持固定时间、固定间隔调度；长期目标还支持文件变化、公开 GitHub Release 和 Google 日历新增或更新事件的轮询触发，但尚未支持邮件触发或 Google 推送。
+- Google 日历已接入只读 OAuth；邮件和云文档等办公连接仍需补齐。
 - WebBridge 依赖本机 daemon 和浏览器扩展状态。
-- 多 Agent 并行尚未实现。
+- 团队模式支持按任务类型拆分与部分并行执行，但还没有跨目标的多 Agent 协作调度。
+- 当前仍没有独立凭据保险库或 VM 沙箱，不能视为与 Muse 等级相同的安全隔离。
+- 提醒收件箱在本地服务中持久化已读与偏好；桌面通知只在浏览器标签页仍打开且处于后台时可用，尚未提供系统常驻通知或移动端推送。
+- 记忆按当前任务做词项匹配，尚未提供语义检索；“仅本地保存”控制自动加入模型上下文，不构成文件系统隔离。模型密钥保存在本机 `.supercodex/secrets.json`，权限限制为 `0600`，但还没有使用系统凭据保险库。
+
+完整的对标范围和验收条件见 [Muse 对标迭代路线](docs/MUSE_ROADMAP.md)。
 
 ## License
 
-当前项目为私有项目，暂未声明开源许可证。
+项目使用 MIT 许可证，详见仓库中的 `LICENSE`。

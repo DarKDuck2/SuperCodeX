@@ -110,6 +110,42 @@ describe("tool orchestration", () => {
     assert.match(approved.modelContent, /ran/);
   });
 
+  it("persists the pre-execution checkpoint before a tool handler can run", async () => {
+    let invoked = false;
+    const tool = {
+      ...testTool("read_file", "read"),
+      handler: async () => { invoked = true; return "read"; }
+    };
+    await assert.rejects(runRegisteredTool(
+      { id: "call_checkpoint", type: "function", function: { name: "read_file", arguments: "{}" } },
+      tool,
+      { workspacePath: process.cwd(), outputPath: process.cwd(), attachments: [] },
+      { beforeToolExecute: async () => { assert.equal(invoked, false); throw new Error("checkpoint persistence failed"); } }
+    ), /checkpoint persistence failed/);
+    assert.equal(invoked, false);
+  });
+
+  it("stops after a completed side effect when its result checkpoint fails", async () => {
+    let invoked = 0;
+    const tool = {
+      ...testTool("write_file", "write"),
+      handler: async () => { invoked++; return { ok: true, summary: "written" }; }
+    };
+    await assert.rejects(runRegisteredTool(
+      { id: "call_result", type: "function", function: { name: "write_file", arguments: "{}" } },
+      tool,
+      { workspacePath: process.cwd(), outputPath: process.cwd(), attachments: [] },
+      {
+        afterToolExecute: async (_name, _risk, _args, result, callId) => {
+          assert.equal(result.ok, true);
+          assert.equal(callId, "call_result");
+          throw new Error("result checkpoint failed");
+        }
+      }
+    ), /result checkpoint failed/);
+    assert.equal(invoked, 1);
+  });
+
   it("returns a recoverable tool result for invalid tool argument JSON", async () => {
     let invoked = false;
     const tool = {
@@ -204,7 +240,8 @@ describe("tool orchestration", () => {
       testTool("run_command", "shell"),
       testTool("delegate_to_claude_code", "shell", ["code"]),
       testTool("search_web", "network"),
-      testTool("webbridge_command", "external")
+      testTool("webbridge_command", "external"),
+      testTool("list_calendar_events", "read")
     ];
 
     const fileTask = selectToolsForTask(tools, {
@@ -224,6 +261,12 @@ describe("tool orchestration", () => {
       context: { workspacePath: process.cwd(), outputPath: process.cwd(), attachments: [] }
     }).map((tool) => tool.definition.function.name);
     assert.deepEqual(commandTask, ["read_file", "run_command"]);
+
+    const calendarTask = selectToolsForTask(tools, {
+      prompt: "查看我下周的日历安排",
+      context: { workspacePath: process.cwd(), outputPath: process.cwd(), attachments: [] }
+    }).map((tool) => tool.definition.function.name);
+    assert.deepEqual(calendarTask, ["read_file", "list_calendar_events"]);
   });
 
   it("selects Claude Code delegation for coding tasks", () => {
