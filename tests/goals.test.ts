@@ -428,7 +428,7 @@ describe("persistent goals", () => {
     await f.service.queueTask(goal, task);
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(task.status, "interrupted");
-    assert.match(task.error || "", /未获批准/);
+    assert.match(task.error || "", /未获放行/);
   });
 
   it("allows plan revision before execution and preserves completed step history", async () => {
@@ -620,10 +620,83 @@ describe("goal review parsing", () => {
 });
 
 describe("tool approvals", () => {
+  it("automatically runs a requested write and persists its inputs and outcome", async () => {
+    const approvals = new Map();
+    const snapshots: Array<Array<{ status: string; executionStatus?: string }>> = [];
+    const persistStore = async () => {
+      snapshots.push([...approvals.values()].map((item) => ({ status: item.status, executionStatus: item.executionStatus })));
+    };
+    const service = createApprovalService({ approvals, persistStore, id: () => "approval_auto", now: () => "2026-10-03T00:00:00.000Z" });
+    let invoked = false;
+    const tool: RegisteredTool = {
+      definition: { type: "function", function: { name: "write_file", description: "write", parameters: {} } },
+      metadata: { riskLevel: "write", permissions: ["workspace:write"] },
+      handler: async () => {
+        assert.equal(snapshots[0]?.[0]?.status, "approved");
+        invoked = true;
+        return "written";
+      }
+    };
+    const result = await runRegisteredTool(
+      { id: "call_auto", type: "function", function: { name: "write_file", arguments: '{"path":"report.md","content":"hello"}' } },
+      tool,
+      { workspacePath: process.cwd(), outputPath: process.cwd(), attachments: [] },
+      {
+        authorizeTool: (toolName, riskLevel, args, toolCallId) => service.request({ conversationId: "conversation_1", toolName, riskLevel, args, toolCallId }),
+        afterToolExecute: async (_toolName, _riskLevel, _args, executionResult, toolCallId) => {
+          await service.recordExecution({ conversationId: "conversation_1", toolCallId, ok: executionResult.ok, summary: executionResult.summary });
+        }
+      }
+    );
+    const recorded = [...approvals.values()][0];
+    assert.equal(service.mode, "auto");
+    assert.equal(invoked, true);
+    assert.equal(result.trace.result?.ok, true);
+    assert.equal(recorded.status, "approved");
+    assert.equal(recorded.decisionSource, "automatic");
+    assert.equal(recorded.toolCallId, "call_auto");
+    assert.match(recorded.summary, /report\.md/);
+    assert.equal(recorded.executionStatus, "succeeded");
+    assert.equal(recorded.resultSummary, "written");
+    assert.deepEqual(snapshots, [[{ status: "approved", executionStatus: undefined }], [{ status: "approved", executionStatus: "succeeded" }]]);
+  });
+
+  it("blocks execution if the preflight record cannot be persisted", async () => {
+    const approvals = new Map();
+    const service = createApprovalService({ approvals, persistStore: async () => { throw new Error("disk unavailable"); }, id: () => "approval_auto", now: () => "2026-10-03T00:00:00.000Z" });
+    let invoked = false;
+    const tool: RegisteredTool = {
+      definition: { type: "function", function: { name: "write_file", description: "write", parameters: {} } },
+      metadata: { riskLevel: "write", permissions: ["workspace:write"] },
+      handler: async () => { invoked = true; return "written"; }
+    };
+    const result = await runRegisteredTool(
+      { id: "call_auto", type: "function", function: { name: "write_file", arguments: '{}' } },
+      tool,
+      { workspacePath: process.cwd(), outputPath: process.cwd(), attachments: [] },
+      { authorizeTool: (toolName, riskLevel, args, toolCallId) => service.request({ toolName, riskLevel, args, toolCallId }) }
+    );
+    assert.equal(invoked, false);
+    assert.equal(result.trace.policy.action, "deny");
+    assert.equal(approvals.size, 0);
+  });
+
+  it("marks an unfinished automatic action uncertain after restart", async () => {
+    const approvals = new Map();
+    let saves = 0;
+    const service = createApprovalService({ approvals, persistStore: async () => { saves++; }, id: () => "approval_auto", now: () => "2026-10-03T00:00:00.000Z" });
+    assert.equal(await service.request({ conversationId: "conversation_1", toolCallId: "call_1", toolName: "write_file", riskLevel: "write", args: { path: "report.md" } }), true);
+    await service.recover();
+    const recorded = [...approvals.values()][0];
+    assert.equal(recorded.executionStatus, "interrupted");
+    assert.match(recorded.resultSummary || "", /核对实际副作用/);
+    assert.equal(saves, 2);
+  });
+
   it("tracks approvals for conversations and automations as well as goals", async () => {
     const approvals = new Map();
     let nextId = 0;
-    const service = createApprovalService({ approvals, persistStore: async () => undefined, id: () => `approval_${++nextId}`, now: () => "2026-10-03T00:00:00.000Z" });
+    const service = createApprovalService({ approvals, persistStore: async () => undefined, id: () => `approval_${++nextId}`, now: () => "2026-10-03T00:00:00.000Z", mode: "manual" });
     const chatApproval = service.request({ conversationId: "conversation_1", toolName: "write_file", riskLevel: "write", args: { path: "report.md" } });
     const automationApproval = service.request({ automationId: "automation_1", toolName: "run_command", riskLevel: "shell", args: { executable: "npm" } });
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -638,7 +711,7 @@ describe("tool approvals", () => {
 
   it("cancels a pending chat approval when its response stream closes", async () => {
     const approvals = new Map();
-    const service = createApprovalService({ approvals, persistStore: async () => undefined, id: () => "approval_1", now: () => "2026-10-03T00:00:00.000Z" });
+    const service = createApprovalService({ approvals, persistStore: async () => undefined, id: () => "approval_1", now: () => "2026-10-03T00:00:00.000Z", mode: "manual" });
     const controller = new AbortController();
     const decision = service.request({ conversationId: "conversation_1", toolName: "write_file", riskLevel: "write", args: {}, signal: controller.signal });
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -650,7 +723,7 @@ describe("tool approvals", () => {
   it("shows the complete approved content and rejects previews that cannot be fully shown", async () => {
     const approvals = new Map();
     let nextId = 0;
-    const service = createApprovalService({ approvals, persistStore: async () => undefined, id: () => `approval_${++nextId}`, now: () => "2026-10-03T00:00:00.000Z" });
+    const service = createApprovalService({ approvals, persistStore: async () => undefined, id: () => `approval_${++nextId}`, now: () => "2026-10-03T00:00:00.000Z", mode: "manual" });
     const content = "a".repeat(5000);
     const decision = service.request({ conversationId: "conversation_1", toolName: "write_file", riskLevel: "write", args: { content } });
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -672,7 +745,7 @@ describe("tool approvals", () => {
     const approvals = new Map();
     let releasePersist: (() => void) | undefined;
     const persistStore = () => new Promise<void>((resolve) => { releasePersist = resolve; });
-    const service = createApprovalService({ approvals, persistStore, id: () => "approval_1", now: () => "2026-10-03T00:00:00.000Z" });
+    const service = createApprovalService({ approvals, persistStore, id: () => "approval_1", now: () => "2026-10-03T00:00:00.000Z", mode: "manual" });
     const decision = service.request({ conversationId: "conversation_1", toolName: "write_file", riskLevel: "write", args: {} });
     await new Promise((resolve) => setTimeout(resolve, 0));
     releasePersist?.();
@@ -687,7 +760,7 @@ describe("tool approvals", () => {
   it("keeps a sensitive tool blocked until the exact pending approval is accepted", async () => {
     const approvals = new Map();
     let nextId = 0;
-    const service = createApprovalService({ approvals, persistStore: async () => undefined, id: () => `approval_${++nextId}`, now: () => "2026-10-03T00:00:00.000Z" });
+    const service = createApprovalService({ approvals, persistStore: async () => undefined, id: () => `approval_${++nextId}`, now: () => "2026-10-03T00:00:00.000Z", mode: "manual" });
     let invoked = false;
     const tool: RegisteredTool = {
       definition: { type: "function", function: { name: "write_file", description: "write", parameters: {} } },
@@ -707,7 +780,7 @@ describe("tool approvals", () => {
     await service.decide(pending.id, true);
     const result = await execution;
     assert.equal(invoked, true);
-    assert.equal(result.trace.policy.reason, "approved by user");
+    assert.equal(result.trace.policy.reason, "authorized for execution");
   });
 
   it("does not execute a rejected write action", async () => {

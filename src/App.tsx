@@ -171,6 +171,7 @@ function App() {
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [approvalMode, setApprovalMode] = useState<"auto" | "manual">("auto");
   const [memories, setMemories] = useState<MemoryFact[]>([]);
   const [memoryCandidates, setMemoryCandidates] = useState<MemoryCandidate[]>([]);
   const [attention, setAttention] = useState<AttentionSnapshot>({ mode: "important", items: [], unreadAlertCount: 0 });
@@ -317,6 +318,7 @@ function App() {
     setAutomations(payload.automations);
     setGoals(payload.goals || []);
     setApprovals(payload.approvals || []);
+    setApprovalMode(payload.approvalMode || "auto");
     setMemories(payload.memories || []);
     setMemoryCandidates(payload.memoryCandidates || []);
     setSettings({
@@ -337,7 +339,11 @@ function App() {
         fetch("/api/attention")
       ]);
       if (goalsResponse.ok) setGoals(((await goalsResponse.json()) as { goals: Goal[] }).goals);
-      if (approvalsResponse.ok) setApprovals(((await approvalsResponse.json()) as { approvals: Approval[] }).approvals);
+      if (approvalsResponse.ok) {
+        const approvalState = (await approvalsResponse.json()) as { mode: "auto" | "manual"; approvals: Approval[] };
+        setApprovals(approvalState.approvals);
+        setApprovalMode(approvalState.mode);
+      }
       if (automationsResponse.ok) setAutomations(((await automationsResponse.json()) as { automations: Automation[] }).automations);
       if (candidatesResponse.ok) setMemoryCandidates(((await candidatesResponse.json()) as { candidates: MemoryCandidate[] }).candidates);
       if (attentionResponse.ok) applyAttentionSnapshot((await attentionResponse.json()) as AttentionSnapshot);
@@ -1561,7 +1567,7 @@ function App() {
           />
         )}
 
-        {pendingApprovalCount > 0 && activeView !== "goals" && (
+        {approvalMode === "manual" && pendingApprovalCount > 0 && activeView !== "goals" && (
           <div className="approvalBanner" role="status">
             <span>有 {pendingApprovalCount} 项工具操作等待你审批，Agent 正在等待决定。</span>
             <button type="button" onClick={() => setActiveView("goals")}>查看审批</button>
@@ -1637,6 +1643,7 @@ function App() {
               <GoalsWorkspace
                 goals={goals}
                 approvals={approvals}
+                approvalMode={approvalMode}
                 automations={automations}
                 projects={projects}
                 selectedGoalId={selectedGoalId}

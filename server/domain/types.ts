@@ -345,9 +345,9 @@ export type AgentResult = {
 export type AgentRunOptions = {
   deliveryMode?: DeliveryMode;
   goalId?: string;
-  authorizeTool?: (input: { toolName: string; riskLevel: string; args: Record<string, unknown>; signal?: AbortSignal }) => Promise<boolean>;
+  authorizeTool?: (input: { toolName: string; riskLevel: string; args: Record<string, unknown>; toolCallId?: string; signal?: AbortSignal }) => Promise<boolean>;
   beforeToolExecute?: (input: { toolName: string; riskLevel: string; args: Record<string, unknown> }) => Promise<void>;
-  afterToolExecute?: (input: { toolName: string; riskLevel: string; args: Record<string, unknown>; toolCallId: string; result: { ok: boolean; artifacts?: Array<{ title: string; path?: string; kind?: "image" | "file" | "code" | "presentation" | "table" }> } }) => Promise<void>;
+  afterToolExecute?: (input: { toolName: string; riskLevel: string; args: Record<string, unknown>; toolCallId: string; result: { ok: boolean; summary?: string; artifacts?: Array<{ title: string; path?: string; kind?: "image" | "file" | "code" | "presentation" | "table" }> } }) => Promise<void>;
 };
 
 export type Approval = {
@@ -362,6 +362,11 @@ export type Approval = {
   status: "pending" | "approved" | "rejected" | "cancelled";
   createdAt: string;
   decidedAt?: string;
+  decisionSource?: "automatic" | "user";
+  toolCallId?: string;
+  executionStatus?: "succeeded" | "failed" | "interrupted";
+  resultSummary?: string;
+  executedAt?: string;
 };
 
 export type MemoryFact = {

@@ -178,12 +178,13 @@ export function registerApiRoutes(app: express.Express, deps: RegisterApiRoutesD
       model: settings.model,
       baseUrl: settings.baseUrl,
       workspaceRoot,
-      tools: toolRegistry.names()
+      tools: toolRegistry.names(),
+      approvalMode: approvalService.mode
     });
   });
   
   app.get("/api/app", (_req, res) => {
-    res.json(getAppState());
+    res.json({ ...(getAppState() as Record<string, unknown>), approvalMode: approvalService.mode });
   });
 
   app.get("/api/goals", (_req, res) => {
@@ -191,7 +192,7 @@ export function registerApiRoutes(app: express.Express, deps: RegisterApiRoutesD
   });
 
   app.get("/api/approvals", (_req, res) => {
-    res.json({ approvals: [...approvals.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100) });
+    res.json({ mode: approvalService.mode, approvals: [...approvals.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100) });
   });
 
   app.get("/api/attention", (_req, res) => { res.json(attentionService.snapshot()); });
@@ -751,6 +752,9 @@ export function registerApiRoutes(app: express.Express, deps: RegisterApiRoutesD
       conversationId: conversation.id,
       signal: runAbortController.signal
     });
+    runOptions.afterToolExecute = async (input) => {
+      await approvalService.recordExecution({ conversationId: conversation.id, toolCallId: input.toolCallId, ok: input.result.ok, summary: input.result.summary || "" });
+    };
   
     const userMessage: Message = {
       id: id("message"),

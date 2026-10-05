@@ -33,19 +33,19 @@ SuperCodex 当前适合本地个人工作台和小团队内测，不建议直接
 - 长期目标工作区：保存目标、拆解步骤、按固定时间重复执行，并查看活动记录。
 - 用户可在目标中用箭头重排未完成步骤；已完成、排队和运行中的步骤保留原位置，计划版本防止过期页面覆盖新顺序。
 - 完成最后一个非定期目标步骤后，可生成复盘和后续步骤建议；建议需由用户逐条接纳才会进入计划。
-- 每个目标可保存多份可编辑文稿，用于跨步骤持续维护报告或清单；用户直接编辑，Agent 可在逐次批准后更新。版本号防止过期编辑覆盖新内容。
+- 每个目标可保存多份可编辑文稿，用于跨步骤持续维护报告或清单；用户直接编辑，Agent 可自动更新。版本号防止过期编辑覆盖新内容。
 - 长期目标步骤在后端执行，关闭浏览器不会中断；重启后，尚未开始工具操作的规划步骤会自动恢复，进入工具阶段的步骤需人工核对后再运行。
 - 长期目标步骤可监控公开 GitHub 仓库的 Release；新版本会触发一次后台执行，已处理的版本 ID 会持久保存。
 - 定时任务在服务重启后会把未完成的运行标为中断，跳过可能已产生副作用的那一次运行。
-- 普通会话、长期目标和定时任务中的写文件、命令与外部工具操作需要逐次批准；聊天界面会提示待审批操作。
+- 普通会话、长期目标和定时任务中的写文件、命令与外部工具操作默认自动放行；执行前记录参数，执行后记录结果。可显式设置 `APPROVAL_MODE=manual` 恢复逐次审批。
 - 用户可维护跨会话或指定目标的记忆，随时编辑或删除；可逐条设置为相关任务使用、始终提供给 Agent 或仅本地保存。对话中的长期偏好先作为带原话来源的候选项，确认后才按任务相关性进入 Agent 上下文。
-- 提醒收件箱汇总审批、目标进展和定时任务结果；可标记已读，选择关闭、仅重要或所有进展，浏览器桌面通知需用户主动启用。
+- 提醒收件箱汇总需要处理的事项、目标进展和定时任务结果；可标记已读，选择关闭、仅重要或所有进展，浏览器桌面通知需用户主动启用。
 - 同一轮到达的后台事件合并为一条桌面通知，桌面通知最短间隔为 1 分钟；所有事件仍保留在提醒收件箱。
 
 ### 实验能力
 
 - 自然语言创建自动化任务，目前支持每天固定时间、固定小时间隔和少量办公语义。
-- Kimi WebBridge 浏览器控制：可检查状态、标签页、快照和导航；填写或点击页面元素需逐次审批。审批展示实际页面与元素，执行前会再次核对。
+- Kimi WebBridge 浏览器控制：可检查状态、标签页、快照和导航；填写或点击页面元素默认自动执行并留档，执行前会再次核对实际页面与元素。
 - Google 日历连接器需要用户自行创建 Google Cloud 桌面应用 OAuth 客户端并完成真实账号授权；邮件、团队消息、云文件连接仍待接入。
 
 ## 技术栈
@@ -209,7 +209,7 @@ npm test
 - `PATCH /api/automations/:id`：更新标题、任务内容、时间规则或启停状态。
 - `DELETE /api/automations/:id`
 
-### 长期目标与审批
+### 长期目标与执行记录
 
 - `GET /api/goals`、`POST /api/goals`：查看和创建长期目标。
 - `PATCH /api/goals/:id`：暂停、恢复或完成目标。
@@ -220,11 +220,11 @@ npm test
 - `PATCH /api/goals/:id/tasks/:taskId`：修订未完成且未运行中的步骤名称和执行说明。
 - `PUT /api/goals/:id/task-order`：提交未完成步骤 ID 的新顺序和 `expectedPlanRevision`；过期版本返回冲突。
 - `POST /api/goals/:id/tasks/:taskId/run`：立即把步骤加入后台队列。
-- `GET /api/approvals`、`POST /api/approvals/:id/decision`：查看并处理敏感工具审批。
+- `GET /api/approvals`：查看工具操作记录及审批模式；手动模式下用 `POST /api/approvals/:id/decision` 处理待审批操作。
 - `GET /api/memories`、`POST /api/memories`、`PATCH /api/memories/:id`、`DELETE /api/memories/:id`：管理个人记忆。
 - `POST /api/goals/:id/artifacts`、`PATCH /api/goals/:id/artifacts/:artifactId`、`DELETE /api/goals/:id/artifacts/:artifactId`：创建、更新和删除目标文稿；更新与删除需提交当前版本号。
 - `POST /api/goals/:id/artifacts/:artifactId/restore`：提交 `expectedRevision` 和 `sourceRevision`，将保留的历史内容恢复为新版本。每份文稿保留最近 20 个旧版本及更新来源；删除文稿会一并删除其历史。
-- `GET /api/goals/:id/files/:fileId/content`：下载目标步骤生成并登记的文件；可用 `?revision=N` 下载保留的旧版本。成功的文件工具结果会自动关联到目标；命令在默认产物目录以外生成的文件可由 Agent 获批调用 `register_goal_file` 登记。单个文件不超过 100 MB 时，系统将内容复制到 `.supercodex/goal-files/`，保存 SHA-256 校验值及最近 20 个旧版本；原工作区文件后续变化不影响已交付快照。超过 100 MB 的文件和升级前已有但未重新生成的文件仍读取实时工作区路径，下载时重新校验路径。
+- `GET /api/goals/:id/files/:fileId/content`：下载目标步骤生成并登记的文件；可用 `?revision=N` 下载保留的旧版本。成功的文件工具结果会自动关联到目标；命令在默认产物目录以外生成的文件可由 Agent 自动调用 `register_goal_file` 登记。单个文件不超过 100 MB 时，系统将内容复制到 `.supercodex/goal-files/`，保存 SHA-256 校验值及最近 20 个旧版本；原工作区文件后续变化不影响已交付快照。超过 100 MB 的文件和升级前已有但未重新生成的文件仍读取实时工作区路径，下载时重新校验路径。
 - `GET /api/memory-candidates`、`POST /api/memory-candidates/:id/decision`：查看、修正并确认或忽略对话中的候选记忆。
 - `GET /api/attention`、`PATCH /api/attention/preferences`、`POST /api/attention/:id/read`、`POST /api/attention/read-all`：查看提醒、调整强度和标记已读。
 
@@ -280,11 +280,11 @@ Agent 的系统提示词不再写死在 `server/index.ts` 中，而是维护在 
 | `search_web` | 调用 open-websearch 搜索网页 |
 | `webbridge_status` | 检查 Kimi WebBridge 状态 |
 | `webbridge_command` | 通过 Kimi WebBridge 读取标签页、页面快照和导航 |
-| `webbridge_interact` | 逐次审批后填写或点击浏览器元素 |
+| `webbridge_interact` | 核对页面后自动填写或点击浏览器元素，并记录执行结果 |
 
 ### 自动安全策略
 
-普通会话、长期目标和定时任务中的写文件、命令及外部工具操作需要逐次批准。审批会展示完整工具参数；超过 32000 字符的操作需拆分后再请求审批，包含凭据字段的参数会被拒绝。普通会话停止或断开时，其待审批请求会取消。后端仍会拦截删除、移入废纸篓、`find -delete`、`git clean`、`git reset --hard`、格式化磁盘、提权、关机重启等危险命令。自动文件读取与搜索会核对符号链接的真实目标，排除 `.env`、`.supercodex`、常见密钥路径等；用户批准的命令子进程不会继承后端名称含密钥或令牌含义的环境变量。
+普通会话、长期目标和定时任务中的写文件、命令及外部工具操作默认自动放行，执行前后持久化参数与结果，无需中途等待用户批准。设置 `APPROVAL_MODE=manual` 可恢复逐次审批；手动模式会展示完整参数，超过 32000 字符的操作需拆分后请求审批。包含凭据字段的参数仍会被拒绝。后端仍会拦截删除、移入废纸篓、`find -delete`、`git clean`、`git reset --hard`、格式化磁盘、提权、关机重启等危险命令。自动文件读取与搜索会核对符号链接的真实目标，排除 `.env`、`.supercodex`、常见密钥路径等；命令子进程不会继承后端名称含密钥或令牌含义的环境变量。
 
 安全策略位于 `server/core/security.ts`，路径限制位于 `server/core/paths.ts` 和 `server/core/agent-paths.ts`。这些规则有测试覆盖，方便开源后审查和扩展。
 

@@ -6,6 +6,7 @@ import { compareArtifactText } from "../lib/artifact-diff";
 type Props = {
   goals: Goal[];
   approvals: Approval[];
+  approvalMode: "auto" | "manual";
   automations: Automation[];
   projects: Project[];
   selectedGoalId: string;
@@ -205,7 +206,7 @@ export function GoalsWorkspace(props: Props) {
           <p>把长期目标拆成可执行步骤。步骤在本地服务中后台运行，进展和结果会保留在目标下。</p>
         </div>
       </div>
-      {pendingApprovals.length > 0 && <section className="goalApprovals">
+      {props.approvalMode === "manual" && pendingApprovals.length > 0 && <section className="goalApprovals">
         <h2>等待你批准的操作</h2>
         {pendingApprovals.map((approval) => <article key={approval.id}>
           <strong>{approval.toolName} · {approvalSource(approval)}</strong>
@@ -213,6 +214,16 @@ export function GoalsWorkspace(props: Props) {
           <div><button type="button" onClick={() => props.onDecision(approval.id, false)}>拒绝</button><button type="button" onClick={() => props.onDecision(approval.id, true)}>批准这次操作</button></div>
         </article>)}
       </section>}
+      <section className="goalApprovals">
+        <h2>工具执行记录</h2>
+        <p className="emptyText">{props.approvalMode === "auto" ? "操作默认自动放行，执行前后均会保存记录。" : "手动审批模式下，已处理的操作会保留在这里。"}</p>
+        {props.approvals.filter((approval) => approval.status !== "pending").length === 0 && <p className="emptyText">暂无执行记录。</p>}
+        {props.approvals.filter((approval) => approval.status !== "pending").slice(0, 30).map((approval) => <article key={approval.id}>
+          <strong>{approval.toolName} · {approvalSource(approval)}</strong>
+          <small>{approval.status === "approved" ? approval.executionStatus === "succeeded" ? "执行成功" : approval.executionStatus === "failed" ? "执行失败" : approval.executionStatus === "interrupted" ? "结果待核对" : "已放行，结果待确认" : approval.status === "rejected" ? "已拒绝" : "已取消"} · {approval.decisionSource === "automatic" ? "自动放行" : approval.decisionSource === "user" ? "人工处理" : "系统处理"} · {new Date(approval.executedAt || approval.decidedAt || approval.createdAt).toLocaleString("zh-CN")}</small>
+          <details><summary>查看操作参数与结果</summary><code>{approval.summary}</code>{approval.resultSummary && <p>{approval.resultSummary}</p>}</details>
+        </article>)}
+      </section>
       <form className="goalCreateForm" onSubmit={submitGoal}>
         <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：持续跟进目标岗位与项目机会" maxLength={120} required />
         <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="目标背景、限制条件、完成标准" maxLength={5000} rows={2} />

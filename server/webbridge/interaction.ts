@@ -4,7 +4,7 @@ type WebBridgeCall = (action: string, args: unknown, session: string) => Promise
 export async function performApprovedWebInteraction(input: InteractionInput, call: WebBridgeCall) {
   const inspected = await inspectWebInteraction(input, call);
   if (input.verifiedElement !== inspected.element) {
-    throw new Error("Browser element changed since approval; take a fresh snapshot and request approval again");
+    throw new Error("Browser element changed since inspection; take a fresh snapshot and retry");
   }
   return call(inspected.action, inspected.action === "fill" ? { selector: inspected.selector, value: input.value } : { selector: inspected.selector }, inspected.session);
 }
@@ -29,11 +29,11 @@ export async function inspectWebInteraction(input: InteractionInput, call: WebBr
   }
   const page = await call("snapshot", {}, session) as { url?: unknown; tree?: unknown };
   if (page.url !== expectedUrl) {
-    throw new Error("Browser page changed since approval; take a fresh snapshot and request approval again");
+    throw new Error("Browser page changed since inspection; take a fresh snapshot and retry");
   }
   const element = findSnapshotElement(page.tree, selector);
   if (!element) {
-    throw new Error("Browser element changed since approval; take a fresh snapshot and request approval again");
+    throw new Error("Browser element changed since inspection; take a fresh snapshot and retry");
   }
   if (action === "fill" && /password|passcode|credit.?card|cvv|security.?code|one.?time.?code|验证码|密码|银行卡/i.test(element)) {
     throw new Error("Filling credentials or payment fields requires a credential broker and is unavailable");

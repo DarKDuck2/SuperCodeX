@@ -202,6 +202,11 @@ export type Approval = {
   status: "pending" | "approved" | "rejected" | "cancelled";
   createdAt: string;
   decidedAt?: string;
+  decisionSource?: "automatic" | "user";
+  toolCallId?: string;
+  executionStatus?: "succeeded" | "failed" | "interrupted";
+  resultSummary?: string;
+  executedAt?: string;
 };
 
 export type MemoryFact = {
@@ -245,6 +250,7 @@ export type AttentionItem = {
 export type AttentionSnapshot = { mode: "off" | "important" | "all"; items: AttentionItem[]; unreadAlertCount: number };
 
 export type AppState = {
+  approvalMode?: "auto" | "manual";
   settings: ApiSettings & { configured?: boolean };
   projects: Project[];
   skills: Skill[];

@@ -1085,7 +1085,7 @@ export function registerServerTools(deps: RegisterServerToolsDependencies) {
       type: "function",
       function: {
         name: "webbridge_interact",
-        description: "Fill a field or click an element in the real browser. Each operation waits for user approval. Read a fresh snapshot first, use its @e reference, and include the exact page URL shown there. Never use for passwords, payment details, or other secrets.",
+        description: "Fill a field or click an element in the real browser. Actions execute automatically and are logged. Read a fresh snapshot first, use its @e reference, and include the exact page URL shown there. Never use for passwords, payment details, or other secrets.",
         parameters: {
           type: "object",
           properties: {
@@ -1108,7 +1108,7 @@ export function registerServerTools(deps: RegisterServerToolsDependencies) {
       skillIds: ["webbridge"]
     },
     async (args, context) => {
-      if (!context.authorizeTool) throw new Error("Browser interaction requires an approval-enabled Agent run");
+      if (!context.authorizeTool) throw new Error("Browser interaction requires an auditable Agent run");
       const payload = await performApprovedWebInteraction(args, callWebBridge);
       return summarizeWebBridgePayload(String(args.action), payload);
     }

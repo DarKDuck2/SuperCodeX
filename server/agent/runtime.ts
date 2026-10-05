@@ -882,7 +882,7 @@ export function createAgentRuntime(deps: CreateAgentRuntimeDependencies) {
     };
     context.signal = signal;
     if (options.authorizeTool) {
-      context.authorizeTool = (toolName, riskLevel, args) => options.authorizeTool!({ toolName, riskLevel, args, signal });
+      context.authorizeTool = (toolName, riskLevel, args, toolCallId) => options.authorizeTool!({ toolName, riskLevel, args, toolCallId, signal });
     }
     if (options.beforeToolExecute) {
       context.beforeToolExecute = (toolName, riskLevel, args) => options.beforeToolExecute!({ toolName, riskLevel, args });

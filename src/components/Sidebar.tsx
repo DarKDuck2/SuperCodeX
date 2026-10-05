@@ -71,7 +71,7 @@ export function Sidebar({
         </button>
         <button className={`navButton ${activeView === "goals" ? "active" : ""}`} type="button" onClick={() => onSelectView("goals")}>
           <Target size={19} />
-          <span className="navText">长期目标与审批</span>
+          <span className="navText">长期目标与执行记录</span>
           {pendingApprovalCount > 0 && <span className="navBadge">{pendingApprovalCount}</span>}
         </button>
         <button className={`navButton ${activeView === "attention" ? "active" : ""}`} type="button" onClick={() => onSelectView("attention")}>

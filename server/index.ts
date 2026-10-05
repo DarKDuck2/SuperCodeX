@@ -62,6 +62,7 @@ const claudeCodeExecutable = process.env.CLAUDE_CODE_EXECUTABLE || "claude";
 const claudeCodeArgs = splitCommandArgs(process.env.CLAUDE_CODE_ARGS || "--print");
 const claudeCodeTimeoutMs = readPositiveIntegerEnv("CLAUDE_CODE_TIMEOUT_MS", 600_000);
 const maxConcurrentGoalTasks = readPositiveIntegerEnv("MAX_CONCURRENT_GOAL_TASKS", 2);
+const approvalMode = process.env.APPROVAL_MODE === "manual" ? "manual" : "auto";
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024, files: 12 }
@@ -76,7 +77,7 @@ const systemPromptPath = path.join(workspaceRoot, "docs", "AGENT_SYSTEM_PROMPT.m
 const fallbackSystemPrompt = [
   "You are SuperCodex, a high-agency general office agent.",
   "Work autonomously, use tools when useful, create polished deliverables, and answer in the user's language.",
-  "Workspace writes, shell commands, and external app actions require approval through the tool gateway; respect refusals.",
+  "Complete tool actions autonomously. The tool gateway records actions and their outcomes; respect its policy decisions.",
   "Never perform destructive cleanup or echo raw HTML, DOM, or JSON from browser tools."
 ].join(" ");
 const systemPrompt = await loadSystemPrompt(systemPromptPath);
@@ -199,7 +200,7 @@ const {
 const attentionService = createAttentionService({ state: attention, goals, approvals, automations, persistStore });
 
 const approvalService = createApprovalService({
-  approvals, persistStore, id, now,
+  approvals, persistStore, id, now, mode: approvalMode,
   describeAction: async (input) => {
     if (input.toolName !== "webbridge_interact") return undefined;
     const target = await inspectWebInteraction(input.args, callWebBridge);
@@ -220,10 +221,13 @@ const automationRunner = createAutomationRunner({
         const approved = await approvalService.request({ ...input, conversationId: conversation.id, automationId: automation.id });
         if (!approved) approvalDeclined = true;
         return approved;
+      },
+      afterToolExecute: async (input) => {
+        await approvalService.recordExecution({ conversationId: conversation.id, automationId: automation.id, toolCallId: input.toolCallId, ok: input.result.ok, summary: input.result.summary || "" });
       }
     });
     if (approvalDeclined || result.toolCalls.some((call) => call.trace?.policy.action === "deny")) {
-      throw new Error("定时任务中的工具操作未获批准或被策略拦截，请检查执行记录");
+      throw new Error("定时任务中的工具操作未获放行或被策略拦截，请检查执行记录");
     }
     return result;
   },
@@ -304,6 +308,9 @@ const goalService = createGoalService({
     return runAgentLoop(conversation, undefined, onEvent, signal, "agent", { goalId, authorizeTool, beforeToolExecute, afterToolExecute });
   },
   requestApproval: approvalService.request,
+  recordToolExecution: async (input) => {
+    await approvalService.recordExecution(input);
+  },
   getCalendarEvents: (timeMin, timeMax) => googleCalendar.listEvents(timeMin, timeMax, { maxEvents: 500, requireComplete: true }),
   suggestNextSteps: async (goal, task) => {
     if (!settings.apiKey) return undefined;

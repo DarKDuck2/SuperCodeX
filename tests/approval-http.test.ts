@@ -63,7 +63,7 @@ it("verifies approval flows and goal review through the HTTP API", { timeout: 20
   assert.ok(modelAddress && typeof modelAddress !== "string");
   const child = spawn(path.join(repoRoot, "node_modules", ".bin", "tsx"), [path.join(repoRoot, "server", "index.ts")], {
     cwd: workspace,
-    env: { ...process.env, PORT: "0", API_BASE_URL: `http://127.0.0.1:${modelAddress.port}/v1`, API_KEY: "test-key", API_MODEL: "fake-model" },
+    env: { ...process.env, APPROVAL_MODE: "manual", PORT: "0", API_BASE_URL: `http://127.0.0.1:${modelAddress.port}/v1`, API_KEY: "test-key", API_MODEL: "fake-model" },
     stdio: ["ignore", "pipe", "pipe"]
   });
   let restarted: ReturnType<typeof spawn> | undefined;
@@ -303,7 +303,7 @@ it("verifies approval flows and goal review through the HTTP API", { timeout: 20
     await firstExit;
     restarted = spawn(path.join(repoRoot, "node_modules", ".bin", "tsx"), [path.join(repoRoot, "server", "index.ts")], {
       cwd: workspace,
-      env: { ...process.env, PORT: "0", API_BASE_URL: `http://127.0.0.1:${modelAddress.port}/v1`, API_KEY: "test-key", API_MODEL: "fake-model" },
+      env: { ...process.env, APPROVAL_MODE: "manual", PORT: "0", API_BASE_URL: `http://127.0.0.1:${modelAddress.port}/v1`, API_KEY: "test-key", API_MODEL: "fake-model" },
       stdio: ["ignore", "pipe", "pipe"]
     });
     const restartedUrl = await waitForServer(restarted);
@@ -336,6 +336,58 @@ it("verifies approval flows and goal review through the HTTP API", { timeout: 20
     if (restarted && restarted.exitCode === null) {
       const exited = once(restarted, "exit");
       restarted.kill();
+      await exited.catch(() => undefined);
+    }
+    fakeModel.close();
+    await once(fakeModel, "close");
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
+
+it("finishes a chat task in the default automatic mode and exposes its execution record", { timeout: 20_000 }, async () => {
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "supercodex-auto-http-"));
+  const fakeModel = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf-8")) as { tools?: unknown[]; messages?: Array<{ role: string }> };
+    const message = body.messages?.some((item) => item.role === "tool")
+      ? { content: "文件已写入" }
+      : body.tools?.length
+        ? { content: "", tool_calls: [{ id: "call_auto_http", type: "function", function: { name: "write_file", arguments: JSON.stringify({ path: "auto.txt", content: "automatic completion" }) } }] }
+        : { content: "文件已写入" };
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ choices: [{ message }] }));
+  });
+  fakeModel.listen(0, "127.0.0.1");
+  await once(fakeModel, "listening");
+  const modelAddress = fakeModel.address();
+  assert.ok(modelAddress && typeof modelAddress !== "string");
+  const child = spawn(path.join(repoRoot, "node_modules", ".bin", "tsx"), [path.join(repoRoot, "server", "index.ts")], {
+    cwd: workspace,
+    env: { ...process.env, APPROVAL_MODE: "auto", PORT: "0", API_BASE_URL: `http://127.0.0.1:${modelAddress.port}/v1`, API_KEY: "test-key", API_MODEL: "fake-model" },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  try {
+    const baseUrl = await waitForServer(child);
+    const appState = await (await fetch(`${baseUrl}/api/app`)).json() as { approvalMode: string };
+    assert.equal(appState.approvalMode, "auto");
+    const created = await fetch(`${baseUrl}/api/conversations`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "自动执行验证" }) });
+    assert.equal(created.status, 201);
+    const conversation = await created.json() as { id: string };
+    const stream = await fetch(`${baseUrl}/api/conversations/${conversation.id}/messages`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: "请写入 auto.txt", stream: true })
+    });
+    assert.equal(stream.status, 200);
+    await stream.text();
+    assert.equal(await fs.readFile(path.join(workspace, "supercodex-files", "auto.txt"), "utf8"), "automatic completion");
+    const log = await (await fetch(`${baseUrl}/api/approvals`)).json() as { mode: string; approvals: Array<{ conversationId?: string; toolName: string; status: string; decisionSource?: string; executionStatus?: string; resultSummary?: string }> };
+    assert.equal(log.mode, "auto");
+    assert.ok(log.approvals.some((item) => item.conversationId === conversation.id && item.toolName === "write_file" && item.status === "approved" && item.decisionSource === "automatic" && item.executionStatus === "succeeded"));
+    assert.ok(!log.approvals.some((item) => item.status === "pending"));
+  } finally {
+    if (child.exitCode === null) {
+      const exited = once(child, "exit");
+      child.kill();
       await exited.catch(() => undefined);
     }
     fakeModel.close();

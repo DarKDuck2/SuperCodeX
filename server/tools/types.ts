@@ -41,7 +41,7 @@ export type ToolContext = {
     createdAt: string;
     derivedFrom?: string;
   }>;
-  authorizeTool?: (toolName: string, riskLevel: ToolRiskLevel, args: Record<string, unknown>) => Promise<boolean>;
+  authorizeTool?: (toolName: string, riskLevel: ToolRiskLevel, args: Record<string, unknown>, toolCallId: string) => Promise<boolean>;
   beforeToolExecute?: (toolName: string, riskLevel: ToolRiskLevel, args: Record<string, unknown>) => Promise<void>;
   afterToolExecute?: (toolName: string, riskLevel: ToolRiskLevel, args: Record<string, unknown>, result: ToolResult, toolCallId: string) => Promise<void>;
   signal?: AbortSignal;

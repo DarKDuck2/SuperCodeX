@@ -71,10 +71,10 @@ export async function runRegisteredTool(
 
   if (options.authorizeTool && ["write", "shell", "external"].includes(tool.metadata.riskLevel)) {
     try {
-      const approved = await options.authorizeTool(toolCall.function.name, tool.metadata.riskLevel, args);
+      const approved = await options.authorizeTool(toolCall.function.name, tool.metadata.riskLevel, args, toolCall.id);
       policy = approved
-        ? { action: "allow", reason: "approved by user" }
-        : { action: "deny", reason: "user declined this tool action" };
+        ? { action: "allow", reason: "authorized for execution" }
+        : { action: "deny", reason: "tool action was not authorized" };
     } catch (error) {
       policy = { action: "deny", reason: error instanceof Error ? error.message : "approval failed" };
     }

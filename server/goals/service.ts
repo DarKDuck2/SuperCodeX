@@ -16,7 +16,8 @@ type GoalServiceDependencies = {
   projects: Map<string, Project>;
   createConversation: (projectId: string, title: string) => Conversation;
   runAgentLoop: (conversation: Conversation, onEvent: (event: AgentEvent) => void, signal: AbortSignal, authorizeTool: NonNullable<AgentRunOptions["authorizeTool"]>, beforeToolExecute: NonNullable<AgentRunOptions["beforeToolExecute"]>, afterToolExecute: NonNullable<AgentRunOptions["afterToolExecute"]>) => Promise<AgentResult>;
-  requestApproval: (input: { goalId: string; taskId: string; toolName: string; riskLevel: string; args: Record<string, unknown>; signal?: AbortSignal }) => Promise<boolean>;
+  requestApproval: (input: { goalId: string; taskId: string; toolName: string; riskLevel: string; args: Record<string, unknown>; toolCallId?: string; signal?: AbortSignal }) => Promise<boolean>;
+  recordToolExecution?: (input: { goalId: string; taskId: string; toolCallId: string; ok: boolean; summary: string }) => Promise<void>;
   suggestNextSteps?: (goal: Goal, task: GoalTask) => Promise<GoalReviewDraft | undefined>;
   maxConcurrentTasks?: number;
   getGitHubReleases?: (repo: string, etag?: string) => Promise<GitHubReleaseResult>;
@@ -555,7 +556,7 @@ export function createGoalService(deps: GoalServiceDependencies) {
           void persistStore().catch((error) => console.error("Goal activity persistence failed", error));
         }
       }, controller.signal, async (input) => {
-        addActivity(goal, "step", `等待批准工具操作：${input.toolName}`, task.id);
+        addActivity(goal, "step", `准备执行工具：${input.toolName}`, task.id);
         await persistStore();
         const approved = await requestApproval({ ...input, goalId: goal.id, taskId: task.id });
         if (!approved) approvalDeclined = true;
@@ -577,25 +578,29 @@ export function createGoalService(deps: GoalServiceDependencies) {
         task.checkpoint.updatedAt = now();
         const previousFiles = goal.files;
         const previousUpdatedAt = goal.updatedAt;
+        const previousActivity = goal.activity;
         const captured = await captureGoalFiles({
           goal, taskId: task.id, toolName: input.toolName, result: input.result,
           workspacePath: projects.get(goal.projectId)?.rootPath || deps.workspaceRoot || process.cwd(),
           snapshotRoot, id, now
         });
+        addActivity(goal, "step", `工具${input.result.ok ? "执行成功" : "执行失败"}：${input.toolName}${input.result.summary ? ` · ${input.result.summary.slice(0, 140)}` : ""}`, task.id);
         try { await persistStore(); }
         catch (error) {
           goal.files = previousFiles;
           goal.updatedAt = previousUpdatedAt;
+          goal.activity = previousActivity;
           await rollbackGoalFileSnapshots(goal.id, previousFiles, captured, snapshotRoot);
           throw error;
         }
         try { await pruneGoalFileSnapshots(goal.id, previousFiles, goal.files, snapshotRoot); }
         catch (error) { console.warn(`Goal file snapshot cleanup failed for ${goal.id}`, error); }
+        await deps.recordToolExecution?.({ goalId: goal.id, taskId: task.id, toolCallId: input.toolCallId, ok: input.result.ok, summary: input.result.summary || "" });
       });
       const blockedAction = approvalDeclined || result.toolCalls.some((call) => call.trace?.policy.action === "deny");
       task.status = blockedAction ? "interrupted" : "completed";
       task.result = result.finalMessage.content.slice(0, 4000);
-      task.error = blockedAction ? "有工具操作未获批准或被策略拦截。请检查结果并决定是否重新执行。" : undefined;
+      task.error = blockedAction ? "有工具操作未获放行或被策略拦截。请检查结果并决定是否重新执行。" : undefined;
       addActivity(goal, blockedAction ? "interrupted" : "completed", blockedAction ? `等待处理：${task.title}` : `已完成：${task.title}`, task.id);
       if (!blockedAction && !task.schedule && !task.fileTrigger && !task.githubReleaseTrigger && !task.calendarEventTrigger && goal.status === "active" && !goal.tasks.some((item) => item !== task && ["planned", "queued", "running"].includes(item.status))) {
         try { await reviewTask(goal, task); }
