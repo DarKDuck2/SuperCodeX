@@ -23,7 +23,7 @@ SuperCodex 当前适合本地个人工作台和小团队内测，不建议直接
 - 文件和图片附件上传，支持通过加号菜单或粘贴添加。
 - PDF、Word、PPTX、CSV/XLSX 附件会进入专用解析工具，支持一句话触发摘要、审查、表格分析和演示文稿检查。
 - 图片处理能力，支持缩放、裁剪、旋转、灰度、模糊、锐化、翻转和格式转换。
-- 网络搜索能力，基于 `open-websearch`。
+- 网络搜索能力：配置豆包搜索 API Key 后默认使用豆包搜索；未配置时兼容 `open-websearch`。
 - Kimi WebBridge 集成，可连接真实浏览器执行网页任务。
 - Google 日历主日历只读连接：支持桌面应用 OAuth 授权、PKCE、令牌刷新、断开与撤销，并可读取未来日程供界面或 Agent 使用。
 - 长期目标可选择监控已连接的 Google 日历：创建步骤时记录未来七天已有事件，此后每五分钟轮询近期新增或更新，并在入队时持久保存已处理版本，避免重复执行。
@@ -54,7 +54,7 @@ SuperCodex 当前适合本地个人工作台和小团队内测，不建议直接
 - 后端：Express 5 + TypeScript
 - 图像处理：Sharp
 - 文件上传：Multer
-- 网络搜索：open-websearch
+- 网络搜索：豆包搜索（可选兼容 open-websearch）
 - 浏览器控制：Kimi WebBridge
 - 状态存储：本地 `.supercodex/state.sqlite` + `.supercodex/conversations/` 会话导出目录
 
@@ -277,7 +277,7 @@ Agent 的系统提示词不再写死在 `server/index.ts` 中，而是维护在 
 | `inspect_presentation` | 提取 PPTX 幻灯片文本结构 |
 | `transform_image` | 修改图片并生成新附件 |
 | `fetch_url` | 抓取公开 HTTP/HTTPS 网页并提取可读内容；拒绝本机、内网及其重定向地址 |
-| `search_web` | 调用 open-websearch 搜索网页 |
+| `search_web` | 优先调用已配置的豆包搜索；支持时间范围、权威来源过滤及结果核验 |
 | `webbridge_status` | 检查 Kimi WebBridge 状态 |
 | `webbridge_command` | 通过 Kimi WebBridge 读取标签页、页面快照和导航 |
 | `webbridge_interact` | 核对页面后自动填写或点击浏览器元素，并记录执行结果 |
@@ -407,7 +407,9 @@ curl -fsSL https://cdn.kimi.com/webbridge/install.sh | bash
 2. 浏览器扩展已启用。
 3. `/api/webbridge/status` 返回 connected 状态。
 
-WebBridge 适用于需要真实登录态、真实网页交互或截图的任务。
+WebBridge 适用于需要真实登录态、真实网页交互或截图的任务。Agent 可读取页面文本和链接、滚动长页，并在快照复核后填写或点击；旅行规划等任务会自动选中搜索与浏览器工具。
+
+豆包搜索可在本地 `.env` 中配置 `SEARCH_WEB_PROVIDER=doubao` 和 `DOUBAO_SEARCH_API_KEY`。Key 不写入仓库；设置后重启后端，通过 `/api/health` 的 `searchProvider` 字段确认，再执行一次 `search_web` 验证结果。可用 `SEARCH_WEB_PROVIDER=open-websearch` 回退旧搜索实现。豆包搜索接入依据为[火山引擎官方 API 示例](https://github.com/bytedance/agentkit-samples/blob/main/skills/byted-web-search/scripts/web_search.py)。
 
 ## 安全策略
 
@@ -517,7 +519,7 @@ npx open-websearch --help
 - 提醒收件箱在本地服务中持久化已读与偏好；桌面通知只在浏览器标签页仍打开且处于后台时可用，尚未提供系统常驻通知或移动端推送。
 - 记忆按当前任务做词项匹配，尚未提供语义检索；“仅本地保存”控制自动加入模型上下文，不构成文件系统隔离。模型密钥保存在本机 `.supercodex/secrets.json`，权限限制为 `0600`，但还没有使用系统凭据保险库。
 
-完整的对标范围和验收条件见 [Muse 对标迭代路线](docs/MUSE_ROADMAP.md)。
+完整的对标范围和验收条件见 [Muse 对标迭代路线](docs/MUSE_ROADMAP.md)；浏览器与跨 App 使用的具体迭代见 [浏览器与 App 使用能力迭代方案](docs/BROWSER_APP_USE_ROADMAP.md)。
 
 ## License
 

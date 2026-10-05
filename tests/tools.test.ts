@@ -7,6 +7,22 @@ import { classifyTask, selectToolsForTask } from "../server/tools/selection.js";
 import type { RegisteredTool, ToolRiskLevel } from "../server/tools/types.js";
 
 describe("tool orchestration", () => {
+  it("offers search and full browser interaction for a travel-planning request", () => {
+    const input = {
+      prompt: "帮我们做后天出发的伦敦情侣 7 天旅游方案，含机票预算、穿搭和酒店预订",
+      context: { workspacePath: process.cwd(), outputPath: process.cwd(), attachments: [] }
+    };
+    const classification = classifyTask(input);
+    assert.equal(classification.needsWeb, true);
+    assert.equal(classification.needsBrowser, true);
+    const selected = selectToolsForTask([
+      testTool("search_web", "network"),
+      testTool("webbridge_command", "external"),
+      testTool("webbridge_interact", "external")
+    ], input);
+    assert.deepEqual(selected.map((item) => item.definition.function.name), ["search_web", "webbridge_command", "webbridge_interact"]);
+  });
+
   it("normalizes structured command argv", () => {
     const command = normalizeCommandInput({ executable: "npm", args: ["run", "build"] });
 

@@ -43,6 +43,7 @@ import {
 } from "../web/search.js";
 import type { Attachment, Skill } from "../domain/types.js";
 import { performApprovedWebInteraction } from "../webbridge/interaction.js";
+import { searchDoubao } from "../web/doubao-search.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -936,7 +937,7 @@ export function registerServerTools(deps: RegisterServerToolsDependencies) {
       type: "function",
       function: {
         name: "search_web",
-        description: "Search the web for information. Returns compact top results.",
+        description: "Search the web for current information. Uses Doubao Search when configured and returns ranked sources with URLs and excerpts.",
         parameters: {
           type: "object",
           properties: {
@@ -945,13 +946,16 @@ export function registerServerTools(deps: RegisterServerToolsDependencies) {
             engines: {
               type: "array",
               items: { type: "string" },
-              description: "Optional search engines to combine: bing, duckduckgo, brave, startpage, baidu, sogou, exa, csdn, juejin, linuxdo"
+              description: "Only used with the open-websearch fallback: bing, duckduckgo, brave, startpage, baidu, sogou, exa, csdn, juejin, linuxdo"
             },
             searchMode: {
               type: "string",
               enum: ["request", "auto", "playwright"],
-              description: "Optional open-websearch mode. playwright can improve Bing quality but is slower."
+              description: "Only used with the open-websearch fallback. playwright can improve Bing quality but is slower."
             },
+            timeRange: { type: "string", description: "Optional Doubao time range: OneDay, OneWeek, OneMonth, OneYear, or YYYY-MM-DD..YYYY-MM-DD" },
+            authLevel: { type: "number", enum: [0, 1], description: "Doubao source authority filter: 1 for authoritative sources only" },
+            queryRewrite: { type: "boolean", description: "Let Doubao rewrite a natural-language query for better retrieval" },
             fetchTop: {
               type: "number",
               description: "Fetch readable content from the top N ranked pages for verification, 0-4. Defaults to 3."
@@ -974,8 +978,15 @@ export function registerServerTools(deps: RegisterServerToolsDependencies) {
       const engines = parseSearchEngines(args.engines);
       const searchMode = parseSearchMode(args.searchMode);
       const fetchTop = Math.max(0, Math.min(Number(args.fetchTop ?? 3) || 0, 4));
+      const provider = process.env.SEARCH_WEB_PROVIDER || (process.env.DOUBAO_SEARCH_API_KEY || process.env.WEB_SEARCH_API_KEY ? "doubao" : "open-websearch");
       const requestedLimit = Math.min(50, Math.max(num * 3, num * Math.max(1, engines.length)));
-      const payload = await openWebSearch(workspaceRoot, query, requestedLimit, { engines, searchMode });
+      const payload = provider === "doubao"
+        ? await searchDoubao(query, requestedLimit, {
+          timeRange: typeof args.timeRange === "string" ? args.timeRange : undefined,
+          authLevel: args.authLevel === 1 ? 1 : 0,
+          queryRewrite: args.queryRewrite === true
+        })
+        : await openWebSearch(workspaceRoot, query, requestedLimit, { engines, searchMode });
       if (!payload.results.length) {
         const failures = payload.partialFailures?.length ? `\nPartial failures: ${JSON.stringify(payload.partialFailures).slice(0, 1000)}` : "";
         return `No results found.${failures}`;
@@ -1042,17 +1053,17 @@ export function registerServerTools(deps: RegisterServerToolsDependencies) {
       type: "function",
       function: {
         name: "webbridge_command",
-        description: "Read or navigate the real browser through Kimi WebBridge. For filling and clicking, use webbridge_interact.",
+        description: "Read or navigate the real browser through Kimi WebBridge. Use extract_page to collect readable text and links, scroll for long pages, then snapshot for updated controls. For filling and clicking, use webbridge_interact.",
         parameters: {
           type: "object",
           properties: {
             action: {
               type: "string",
-              description: "One of: list_tabs, snapshot, navigate, find_tab"
+              description: "One of: list_tabs, snapshot, navigate, find_tab, extract_page, scroll"
             },
             args: {
               type: "object",
-              description: "Arguments for the WebBridge action"
+              description: "Arguments for the action. scroll accepts pixels from -2000 to 2000; extract_page takes no arguments."
             },
             session: {
               type: "string",
@@ -1072,10 +1083,16 @@ export function registerServerTools(deps: RegisterServerToolsDependencies) {
     },
     async (args) => {
       const action = String(args.action || "");
-      if (!["list_tabs", "snapshot", "navigate", "find_tab"].includes(action)) {
+      if (!["list_tabs", "snapshot", "navigate", "find_tab", "extract_page", "scroll"].includes(action)) {
         throw new Error(`Unsupported WebBridge action: ${action}`);
       }
-      const payload = await callWebBridge(action, args.args ?? {}, String(args.session || "supercodex"));
+      const actionArgs = args.args && typeof args.args === "object" ? args.args as Record<string, unknown> : {};
+      const session = String(args.session || "supercodex");
+      const payload = action === "extract_page"
+        ? await callWebBridge("evaluate", { code: "(() => { const links = [...document.querySelectorAll('a[href]')].filter(a => a.innerText.trim()).slice(0, 40).map(a => ({ text: a.innerText.trim().slice(0, 120), url: a.href })); return { url: location.href, title: document.title, text: (document.body?.innerText || '').slice(0, 8000), links }; })()" }, session)
+        : action === "scroll"
+          ? await callWebBridge("evaluate", { code: `window.scrollBy({ top: ${Math.max(-2000, Math.min(2000, Number(actionArgs.pixels) || 700))}, behavior: 'instant' }); ({ url: location.href, scrollY: window.scrollY, pageHeight: document.documentElement.scrollHeight })` }, session)
+          : await callWebBridge(action, actionArgs, session);
       return summarizeWebBridgePayload(action, payload);
     }
   );

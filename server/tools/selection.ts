@@ -16,6 +16,7 @@ const codeTaskPattern = /项目|代码|文件|目录|构建|测试|运行|命令
 const webTaskPattern = /网页|网址|链接|浏览器|搜索|联网|新闻|资讯|最新|今天|昨日|昨天|查一下|查找|打开|http|https|web|search|browser|url/i;
 const imageTaskPattern = /图片|图像|照片|截图|裁剪|缩放|旋转|灰度|模糊|锐化|格式|image|photo|screenshot|resize|crop/i;
 const browserTaskPattern = /webbridge|浏览器|打开网页|控制网页|真实浏览器|browser|tab|snapshot/i;
+const travelTaskPattern = /旅游|旅行|行程|机票|航班|酒店|住宿|签证|景点|trip|travel|itinerary|flight|hotel|accommodation/i;
 const shellTaskPattern = /命令|终端|运行|执行|安装|构建|测试|脚本|npm|node|git|rg|shell|command|install|build|test/i;
 const officeTaskPattern = /学术|论文|研究|文献|引用|ppt|幻灯片|演示|pdf|html|excel|表格|数据|csv|xlsx|docx|word|报告|academic|paper|research|citation|slides|presentation|spreadsheet/i;
 const pdfTaskPattern = /pdf|论文|文献|paper|article/i;
@@ -85,9 +86,9 @@ export function classifyTask(input: TaskClassificationInput): TaskClassification
     hasPresentationAttachment,
     needsCode,
     needsShell: shellTaskPattern.test(selectorText) || needsCode || needsOfficeTools,
-    needsWeb: webTaskPattern.test(selectorText) || activeCategories.has("search") || activeCategories.has("research"),
+    needsWeb: webTaskPattern.test(selectorText) || travelTaskPattern.test(selectorText) || activeCategories.has("search") || activeCategories.has("research"),
     needsImages: hasImages || imageTaskPattern.test(selectorText),
-    needsBrowser: browserTaskPattern.test(selectorText) || activeCategories.has("browser"),
+    needsBrowser: browserTaskPattern.test(selectorText) || travelTaskPattern.test(selectorText) || activeCategories.has("browser"),
     needsOffice,
     needsOfficeTools,
     needsPdf,
@@ -122,7 +123,7 @@ export function selectToolsForTask(
     if (name === "list_calendar_events") return calendarTaskPattern.test(classification.selectorText);
     if (name === "fetch_url" || name === "search_web") return classification.needsWeb;
     if (name === "transform_image") return classification.needsImages;
-    if (name === "webbridge_status" || name === "webbridge_command") return classification.needsBrowser;
+    if (name === "webbridge_status" || name === "webbridge_command" || name === "webbridge_interact") return classification.needsBrowser;
     if (name === "extract_pdf_text") return classification.hasPdfAttachment || classification.needsPdf;
     if (name === "read_spreadsheet") return classification.hasSpreadsheetAttachment || classification.needsSpreadsheet;
     if (name === "create_spreadsheet") return classification.needsSpreadsheet;

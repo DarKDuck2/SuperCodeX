@@ -179,7 +179,8 @@ export function registerApiRoutes(app: express.Express, deps: RegisterApiRoutesD
       baseUrl: settings.baseUrl,
       workspaceRoot,
       tools: toolRegistry.names(),
-      approvalMode: approvalService.mode
+      approvalMode: approvalService.mode,
+      searchProvider: process.env.SEARCH_WEB_PROVIDER || (process.env.DOUBAO_SEARCH_API_KEY || process.env.WEB_SEARCH_API_KEY ? "doubao" : "open-websearch")
     });
   });
   
